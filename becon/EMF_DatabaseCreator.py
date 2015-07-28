@@ -12,9 +12,9 @@ CREATE TABLE T_ECONOMIC_DATA
 int_data_master_id INTEGER UNIQUE NOT NULL PRIMARY KEY,
 txt_data_name TEXT,
 txt_data_ticker TEXT UNIQUE,
-code_data_supertype INTEGER NOT NULL,
-code_data_type INTEGER NOT NULL,
-code_data_subtype INTEGER NOT NULL,
+code_data_supertype INTEGER DEFAULT 0,
+code_data_type INTEGER DEFAULT 0,
+code_data_subtype INTEGER DEFAULT 0,
 int_data_periodicity INTEGER, /* periodicity in 1/year. Days is 365; weeks is 52; months is 12; quarters is 4 */
 dt_earliest_value INTEGER, /* earliest data point we have downloaded */
 dt_latest_value INTEGER, /* latest data point we have */
@@ -53,7 +53,8 @@ bool_is_seasonally_adjusted INTEGER,
 bool_is_real INTEGER,
 bool_is_deflator INTEGER,
 code_is_gross INTEGER, 	/* is it gross (1) or net (0)? [Leaving open for more values] */
-code_is_level INTEGER, 	/* is it a level (1) or a rate of change (0)? [Leaving open for more values] */
+code_is_level INTEGER, 	/* does the level of the value matter (1) as well as the rate of change? [Leaving open for more values] */
+code_good_direction INTEGER DEFAULT 0, 	/* is positive 'good'? (1) or is negative 'good' (-1)? [Use sparingly when it matters] */
 code_private_public INTEGER,
 code_economic_activity INTEGER,
 code_data_adjustment INTEGER,
@@ -75,6 +76,7 @@ EconomicDataDetailedKeys = [
 'bool_is_deflator',
 'code_is_gross',
 'code_is_level',
+'code_good_direction',
 'code_private_public',
 'code_economic_activity',
 'code_data_adjustment',
