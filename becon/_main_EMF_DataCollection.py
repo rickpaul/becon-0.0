@@ -3,6 +3,7 @@
 #TODO 3: Change Series Loading/Storage Method from CSV to JSON
 #TODO 4: Fill in ISM Data https://research.stlouisfed.org/fred2/search?st=napm
 #TODO 5: Find a good Oil Price Source
+#TODO 6: Close/update csv even if error occurred
 import sqlite3 as sq
 import logging as log
 import datetime
@@ -10,6 +11,7 @@ import csv
 import re
 import copy #probably deprecated
 from os.path import isfile
+from os import rename
 from calendar import monthrange
 from sys import maxint
 import fred # https://github.com/zachwill/fred
@@ -18,38 +20,35 @@ import EMF_DatabaseHelper as EM_DBHelp
 import EMF_DatabaseCreator as EM_DBMake
 import EMF_util as EM_util
 
-def downloadDataFromFred_fillMetadata(read_row, write_range=range(1,4)):
-	write_row = copy.copy(read_row)
-	write_range[write_range] = ['']*len(write_range)
-	ticker = read_row[0]
+FREDCol = EM_util.FREDSeriesCSVCols
+
+def downloadDataFromFred_fillMetadata(ticker):
 	series_data = fred.series(ticker)
+	log.info('\tFinding Metadata for %s', ticker)
 	if 'error_message' in series_data.keys():
-		write_row[write_range[2]] = 'Metadata Error: ' + series_data['error_message']
+		log.warning('\tError in Finding Metadata for %s', ticker)
+		log.warning('\tError: %s', historical_data['error_message'])		
+		status = 'ERROR: ' + series_data['error_message']
 	else:
+		log.info('\tFound Metadata for %s... Writing to DB', ticker)
 		# Read Data
-		data = series_data['seriess'][0]
+		metadata = series_data['seriess'][0]
 		# Write Data to Database
 		try:
-			downloadDataFromFred_fillMetadata_parseSeriesData(ticker, data)
+			downloadDataFromFred_fillMetadata_parseSeriesData(ticker, metadata)
 		except:
 			raise
-		finally:
-			finalize()
 		# Update Data in CSV
-		write_row[write_range[2]] = 'Metadata Updated'
-	write_row[write_range[0]] = datetime.datetime.now()
-	write_row[write_range[1]] = datetime.datetime.now().strftime('%A, %d. %B %Y %I:%M%p')
-	return write_row
+		status = 'ok'
+	return status
 
-def downloadDataFromFred_fillHistory(write_row, write_range=range(4,7)):
-	for i in write_range: write_row[i] = ''
-	ticker = write_row[0]
+def downloadDataFromFred_fillHistory(ticker):
 	log.info('\tFinding Historical Data for %s', ticker)
 	historical_data = fred.observations(ticker)
 	if 'error_message' in historical_data.keys():
 		log.warning('\tError in Finding Historical Data for %s', ticker)
 		log.warning('\tError: %s', historical_data['error_message'])
-		write_row[write_range[2]] = 'Metadata Error: ' + historical_data['error_message']
+		status = 'ERROR: ' + historical_data['error_message']
 	else:
 		log.info('\tFound %d Historical Data Points for %s... Writing to DB', len(historical_data['observations']), ticker)
 		# Write Data to Database
@@ -59,10 +58,8 @@ def downloadDataFromFred_fillHistory(write_row, write_range=range(4,7)):
 		except:
 			raise
 		# Update Data in CSV
-		write_row[write_range[2]] = 'Metadata Updated'
-	write_row[write_range[0]] = datetime.datetime.now()
-	write_row[write_range[1]] = datetime.datetime.now().strftime('%A, %d. %B %Y %I:%M%p')
-	return write_row
+		status = 'ok'
+	return status
 
 def downloadDataFromFred_fillHistory_parseSeriesData(dataSeriesTicker, data):
 	dataSeriesID =	EM_DBHelp.retrieve_DataSeriesID(db_connection, db_cursor, 
@@ -120,71 +117,30 @@ def downloadDataFromFred_fillHistory_parseSeriesData(dataSeriesTicker, data):
 	value = EM_util.dtGetNowAsEpoch()
 	sendToDB()
 
-#DATA FROM FRED	
-# (int_ID INTEGER UNIQUE NOT NULL PRIMARY KEY,
-	# realtime_start,
-	# realtime_end Char(250),
-	# title Char(250),
-	# observation_start Char(250),
-	# observation_end Char(250),
-	# frequency Char(250),
-	# frequency_short Char(250),
-# units Char(250),
-# units_short Char(250),
-	# seasonal_adjustment Char(250),
-	# seasonal_adjustment_short Char(250),
-	# last_updated Char(250),
-# popularity Char(250),
-# notes Char(250)
-
-#DATA IN T_ECONOMIC_DATA DB
-	# int_data_master_id INTEGER UNIQUE NOT NULL PRIMARY KEY,
-	# txt_data_name TEXT NOT NULL,
-	# txt_data_ticker TEXT NOT NULL UNIQUE,
-	# int_data_periodicity INTEGER, /* periodicity in 1/year. Days is 365; weeks is 52; months is 12; quarters is 4 */
-# dt_earliest_value INTEGER, /* earliest data point we have */
-# dt_latest_value INTEGER, /* latest data point we have */
-# dt_last_updated INTEGER, /* when we got the data last */
-# int_unsuccessful_inserts INTEGER DEFAULT 0
-
-
-	# int_data_master_id INTEGER NOT NULL PRIMARY KEY,
-# txt_data_source TEXT,
-	# dt_last_updated_SOURCE INTEGER, /* last update according to FRED */
-	# dt_earliest_value_SO INTEGER, /* earliest date possible according to FRED */
-	# dt_latest_value_SO INTEGER, /* latest date possible according to FRED */
-	# bool_generated_datapoint INTEGER,
-# bool_is_normalized INTEGER,
-	# bool_is_seasonally_adjusted INTEGER,
-# bool_is_real INTEGER,
-# bool_is_deflator INTEGER,
-# code_private_public INTEGER,
-# code_economic_activity INTEGER,
-# code_data_adjustment INTEGER,
-# code_sector INTEGER,
-# code_data_units INTEGER,
-# code_item_type INTEGER
-
 per_matchObj = r'(.*) per (.*)'
 of_matchObj = r'(.*) of (.*)'
 IndexEquals_matchObj = r'Index (.*)=(.*)'
+ChainedDollars_matchObj = r'Chained \d\d\d\d Dollars'
 year_matchObj = r'(\d\d\d\d)(?:-\d\d)?'
 
 def downloadDataFromFred_fillMetadata_parseSeriesData(dataSeriesTicker, data):
-	# Get Data Series Name
-	dataSeriesName = data['title'].encode('ascii', 'ignore')
-	# Save Off Data Series Real/Nominal Flag for Later Use
-	dataSeriesIsRealValue = None
-	# Create or Get Series ID
+	#Get Data Series ID
 	dataSeriesID =	EM_DBHelp.retrieve_DataSeriesID(db_connection, db_cursor, 
-													dataName=dataSeriesName, 
 													dataTicker=dataSeriesTicker, 
 													insertIfNot=True)
-
 	sendToDB = lambda: \
 	EM_DBHelp.update_DataSeriesMetaData(db_connection, db_cursor, columnName, value, seriesID=dataSeriesID)
 
-	# Insert Data Series Periodicity
+	# Update Data Series Name
+	columnName = 'txt_data_name'
+	value = data['title'].encode('ascii', 'ignore')
+	sendToDB()
+
+	columnName = 'txt_data_source'
+	value = 'FRED'
+	sendToDB()
+
+	# Update Data Series Periodicity
 	dataFrequency = data['frequency_short']
 	if dataFrequency == 'M':
 		value = 12
@@ -192,14 +148,16 @@ def downloadDataFromFred_fillMetadata_parseSeriesData(dataSeriesTicker, data):
 		value = 4
 	elif dataFrequency == 'A':
 		value = 1
+	elif dataFrequency == 'W':
+		value = 52		
 	elif dataFrequency == 'D':
-		raise NotImplementedError('Not even sure if this is a category')	
+		value = 365
 	else:
 		raise NotImplementedError('Data Frequency not recognized')
 	columnName = 'int_data_periodicity'
 	sendToDB()
 
-	# Get Data Series Seasonal Adjustment
+	# Update Data Series Seasonal Adjustment
 	dataSeasonalAdjustment = data['seasonal_adjustment_short']
 	if dataSeasonalAdjustment == 'SA' or dataSeasonalAdjustment == 'SAAR':
 		value = 1
@@ -210,17 +168,17 @@ def downloadDataFromFred_fillMetadata_parseSeriesData(dataSeriesTicker, data):
 	columnName = 'bool_is_seasonally_adjusted'
 	sendToDB()
 
-	# Get Data Series Last Updated
+	# Update Data Series Last Updated
 	value = EM_util.dtConvert_YYYY_MM_DD_TimetoEpoch(data['last_updated'])
 	columnName = 'dt_last_updated_SOURCE'
 	sendToDB()
 
-	# Get Data Series First Value
+	# Update Data Series First Value
 	value = EM_util.dtConvert_YYYY_MM_DDtoEpoch(data['observation_start'])
 	columnName = 'dt_earliest_value_SOURCE'
 	sendToDB()
 
-	# Get Data Series Last Value
+	# Update Data Series Last Value
 	value = EM_util.dtConvert_YYYY_MM_DDtoEpoch(data['observation_end'])
 	columnName = 'dt_latest_value_SOURCE'
 	sendToDB()
@@ -230,7 +188,21 @@ def downloadDataFromFred_fillMetadata_parseSeriesData(dataSeriesTicker, data):
 	columnName = 'bool_generated_datapoint'
 	sendToDB()
 
-	# Get Information From Units
+	# Update Last Update Date
+	columnName = 'dt_last_updated_metadata'
+	value = EM_util.dtGetNowAsEpoch()
+	sendToDB()
+
+	# Update Information From Units	
+	# TEST! TEST! TEST! TEST! TEST! TEST! TEST! TEST!
+	# TEST! TEST! TEST! TEST! TEST! TEST! TEST! TEST!
+	# BELOW HERE WE CHANGE TO NOT ACTUALLY UPDATE DB.
+	# TEST! TEST! TEST! TEST! TEST! TEST! TEST! TEST!
+	# TEST! TEST! TEST! TEST! TEST! TEST! TEST! TEST!
+
+	# Save Off Data Series Real/Nominal Flag for Later Use
+	dataSeriesIsRealValue = None	
+	def sendToDB(): print data['title'] + '|' + data['units'] + '|' + columnName + ' : ' + str(value) #TEST
 	dataUnits = data['units']
 	done = 0
 	if dataUnits == 'Percent':
@@ -255,7 +227,7 @@ def downloadDataFromFred_fillMetadata_parseSeriesData(dataSeriesTicker, data):
 		innerMatchObj = re.match(ChainedDollars_matchObj,dataTypeValue)
 		if (innerMatchObj is not None):
 			dataSeriesIsRealValue = True
-			dataTypeValue = innerMatchObj.group(2)
+			dataTypeValue = 'Dollars'
 		else:
 			dataSeriesIsRealValue = False
 		done = 1
@@ -266,65 +238,185 @@ def downloadDataFromFred_fillMetadata_parseSeriesData(dataSeriesTicker, data):
 		done = 1
 	matchObj = None if done else re.match(IndexEquals_matchObj, dataUnits)
 	if (matchObj is not None):
-		dataUnitsValue = 'per ' + matchObj.group(2)
-		dataTypeValue = matchObj.group(1)
+		dataUnitsValue = 'Number'
+		dataTypeValue = 'Index'
 		done = 1
 
 	if dataSeriesIsRealValue is None:
-		raise NotImplementedError
-		# dataSeriesIsRealValue = 
-	columnName = 'bool_is_real' #TODO: regex
-	columnName = 'bool_is_normalized' #TODO: regex
+		pass
+		# raise NotImplementedError 
+		# dataSeriesIsRealValue = #TODO: regex: Read data series name to determine (if it has the word 'real')
+	columnName = 'bool_is_real' 
+	value = dataSeriesIsRealValue
+	sendToDB()
+	columnName = 'bool_is_normalized' #TODO: fill
+	value = None
+	sendToDB()
+	columnName = 'code_private_public' #TODO: fill
+	value = None
+	sendToDB()	
+	columnName = 'code_economic_activity' #TODO: fill
+	value = None
+	sendToDB()
+	columnName = 'code_data_adjustment' #TODO: fill
+	value = None
+	sendToDB()
+	columnName = 'code_sector' #TODO: fill
+	value = None
+	sendToDB()	
+	columnName = 'code_data_units' #TODO: fill
+	value = None
+	sendToDB()	
+	columnName = 'code_item_type' #TODO: fill
+	value = None
+	sendToDB()
+	columnName = 'txt_data_original_source' #TODO: fill
+	value = None
+	sendToDB()
 
-	#TODO: Deal with Units
 
-
-def downloadDataFromFred(csvFileName=EM_util.FREDSeriesCSV, fillHistory=True, fillMetadata=True):
+def downloadDataFromFred(	csvFileName=EM_util.FREDSeriesCSV, 
+							fillHistory=True, 
+							fillMetadata=True, 
+							fillUserData=True, 
+							minImportance=2, 
+							writeEveryRow=True,
+							pause=False):
 	# Access Global Variables
-	global verboseLevel
 	global db_cursor
 	global db_connection
 
-	# Connect to FRED
-	fred.key(EM_util.FREDAPIKey)
+	# Establish Helpful Lambdas
+	sendToDB = lambda: \
+	EM_DBHelp.update_DataSeriesMetaData(db_connection, db_cursor, columnName, value, seriesID=dataSeriesID)
 
 	# Read CSV file
 	log.info('Accessing CSV to get Series Tickers...')
 	with open(csvFileName, 'rU') as csvfile:
 		series_csv = csv.reader(csvfile)
 		header = [next(series_csv)] # Ignore header in CSV
-		write_list = [list(l) for l in series_csv]
-		log.info('Downloading Series data to sqlite...')
-		for i in range(len(write_list)):	
-			if fillHistory:
-				write_list[i] = downloadDataFromFred_fillHistory(write_list[i])
-			if fillMetadata:
-				write_list[i] = downloadDataFromFred_fillMetadata(write_list[i])
+		write_list = [list(row) for row in series_csv]
+		log.info('Downloading FRED data to database...')
+		for i in range(len(write_list)):
+			# Recognize End of File without Reaching Deprecated
+			if write_list[i][FREDCol['TICKER_COL']] == '':
+				break
+			if int(write_list[i][FREDCol['IMPORTANCE_COL']]) > minImportance:
+				continue
+			lastHistoryDownload = 	datetime.datetime.strptime(
+									write_list[i][FREDCol['HISTORY_TIMESTAMP_COL']],
+									EM_util.FREDSeriesCSVTimeFormat)
+			dnldHistory = 	((fillHistory and \
+							(datetime.datetime.now()-lastHistoryDownload) > EM_util.FREDDownloadDelayHistory) or \
+							write_list[i][FREDCol['FORCE_HISTORY_REDOWNLOAD_COL']] == EM_util.FREDForceDownload)  and \
+							write_list[i][FREDCol['FORCE_HISTORY_REDOWNLOAD_COL']] != EM_util.FREDSkipDownload
+
+			lastMetadataDownload = 	datetime.datetime.strptime(
+									write_list[i][FREDCol['HISTORY_TIMESTAMP_COL']],
+									EM_util.FREDSeriesCSVTimeFormat)
+			dnldMetadata = 	((fillMetadata and\
+							(datetime.datetime.now()-lastMetadataDownload) > EM_util.FREDDownloadDelayMetadata) or \
+							write_list[i][FREDCol['FORCE_METADATA_REDOWNLOAD_COL']] == EM_util.FREDForceDownload)  and \
+							write_list[i][FREDCol['FORCE_METADATA_REDOWNLOAD_COL']] != EM_util.FREDSkipDownload
+
+			ticker = write_list[i][FREDCol['TICKER_COL']]
+			log.info('Downloading %s data to database...', ticker)
+			if dnldHistory:
+				status = downloadDataFromFred_fillHistory(ticker)
+				write_list[i][FREDCol['HISTORY_STATUS_COL']] = status
+				write_list[i][FREDCol['HISTORY_TIMESTAMP_COL']] = \
+					datetime.datetime.now().strftime(EM_util.FREDSeriesCSVTimeFormat)
+			if dnldMetadata:
+				status = downloadDataFromFred_fillMetadata(ticker)
+				write_list[i][FREDCol['METADATA_STATUS_COL']] = status
+				write_list[i][FREDCol['METADATA_TIMESTAMP_COL']] = \
+					datetime.datetime.now().strftime(EM_util.FREDSeriesCSVTimeFormat)
+			# TODO: Decide when to fillUserData
+			if fillUserData:
+				# We seek the Series ID again to make sure it was input correctly earlier
+				# (Rather than just passing it back from earlier)	
+				dataSeriesID = EM_DBHelp.retrieve_DataSeriesID(db_connection, db_cursor, 
+																dataTicker=ticker, 
+																insertIfNot=False)
+				columnName = 'code_data_subtype'
+				csvVal = write_list[i][FREDCol['SUBTYPE_COL']]
+				if csvVal == '': csvVal = 'unknown'			
+				value = int(EM_util.dataSubtypes[csvVal])
+				sendToDB()
+				
+				columnName = 'code_data_type'
+				csvVal = write_list[i][FREDCol['TYPE_COL']]
+				if csvVal == '': csvVal = 'unknown'
+				value = int(EM_util.dataTypes[csvVal])
+				sendToDB()
+				
+				columnName = 'code_data_supertype'
+				csvVal = write_list[i][FREDCol['SUPERTYPE_COL']]
+				if csvVal == '': csvVal = 'unknown'
+				value = int(EM_util.dataSupertypes[csvVal])
+				sendToDB()
+
+				columnName = 'code_is_level'
+				csvVal = write_list[i][FREDCol['IS_LEVEL_COL']]
+				if csvVal == '': csvVal = 'unknown'
+				value = int(EM_util.levelMattersTypes[csvVal])
+				sendToDB()
+
+				columnName = 'code_good_direction'
+				csvVal = write_list[i][FREDCol['POSITIVE_IS_GOOD_COL']]
+				if csvVal == '': csvVal = 'unknown'
+				value = int(EM_util.goodDirectionTypes[csvVal])
+				sendToDB()
+			# TODO: This is hacky. Do better.
+			if writeEveryRow:
+				with open(csvFileName[:-4]+'_temp.csv', 'wb') as milestone_csvfile:
+					log.info('Updating Series CSV File...')
+					csvwrite = csv.writer(milestone_csvfile)
+					csvwrite.writerows(header)
+					csvwrite.writerows(write_list)
+					log.info('CSV file updated...')
+
+			# For Testing... TODO: Remove
+			if pause: 
+				statement = raw_input('\nPress Enter to Continue...\n') 
+
 		log.info('Downloaded Series data sucessfully...')
 
 	with open(csvFileName, 'wb') as csvfile:
 		log.info('Updating Series CSV File...')
-		csvwrite=csv.writer(csvfile)
+		csvwrite = csv.writer(csvfile)
 		csvwrite.writerows(header)
-		csvwrite.writerow(write_list)
+		csvwrite.writerows(write_list)
 		log.info('CSV file updated...')
 
-def performInitialSetup(DBFilePath=None, forceDBCreation=False):
+def performInitialSetup(DBFilePath=None, forceDBCreation=False, logFilePath=None, recordLog=False, quietShell=False):
 	# Establish Global Variables
 	global db_cursor
 	global db_connection
 
-	if DBFilePath is None:
-		DBFilePath = EM_util.defaultDB
-	
-	log.info('Connecting to Database: \n%s', DBFilePath)
+	# Initialize Log
+	if quietShell and not recordLog:
+		recordLevel=log.INFO
+	else:
+		recordLevel=None
+
+	EM_util.initializeLog(recordLog=recordLog, logFilePath=logFilePath, recordLevel=recordLevel)
+	log.info('Log Initialized.')
+
+	# Connect to FRED
+	log.info('Connecting to FRED.')
+	fred.key(EM_util.FREDAPIKey)
 	
 	# Create Database
+	log.info('Connecting to Database: \n%s', DBFilePath)
+	if DBFilePath is None:
+		DBFilePath = EM_util.defaultDB
+		
 	if not isfile(DBFilePath):
 		log.info('Database not found. Creating new database...')
 		EM_DBMake.doOneTimeDBCreation(force=forceDBCreation, DBFilePath=DBFilePath)
 
-	# Create Database Connection
+	# Store Database Connection
 	db_connection = sq.connect(DBFilePath)
 	db_cursor = db_connection.cursor()
 	log.info('Database opened successfully')
@@ -333,9 +425,13 @@ def finalize():
 	db_connection.close()
 
 if __name__=="__main__":
+	from sys import argv
 	try:
-		performInitialSetup()
-		downloadDataFromFred() #metadata not ready yet
+		args = argv[1:]
+		recordLog = 1 if '-r' in args else 0
+		quietShell = 1 if '-q' in args else 0
+		performInitialSetup(recordLog=recordLog,quietShell=quietShell)
+		downloadDataFromFred()
 	except:
 		raise
 	finally:
