@@ -1,3 +1,6 @@
+# SSH Files
+.ssh/*
+
 # Deprecated Files
 deprecated/*
 
