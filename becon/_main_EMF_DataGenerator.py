@@ -10,26 +10,13 @@ from os.path import isfile
 import EMF_DatabaseHelper as EM_DBHelp
 import EMF_util as EM_util
 
-FORMAT_TYPES = {
-	'rickshawJSON': ('rs', '.json'),
-	'd3JSON': ('d3', '.json')
-}
-WORD_TYPES = {
-	'1OD' : 1,
-	'timeToRecession' : 2,
-}
-WORD_SUPER_TYPES = {
-	'generic' : 1,
-	'recessionSignal' : 2,
-}
-
 def performInitialSetup(DBFilePath=None, fileFormat='rickshawJSON'):
 	# Establish Global Variables
 	global db_cursor
 	global db_connection
 	global file_format
 
-	file_format = FORMAT_TYPES[fileFormat]
+	file_format = EM_util.rawSeriesFormatTypes[fileFormat]
 
 	EM_util.initializeLog()
 
@@ -68,7 +55,7 @@ def convertDataHistoryToJSON(ticker, dataSeriesID=None):
 def generateDateHistoryFilename(ticker, earliestData, latestData, lastUpdate):
 	global file_format
 
-	fileName = EM_util.JSONRepository
+	fileName = EM_util.webJSONRepository
 	fileName += file_format[0] + '|'
 	fileName += ticker + '|'
 	fileName += str(earliestData) + '|'
@@ -79,7 +66,7 @@ def generateDateHistoryFilename(ticker, earliestData, latestData, lastUpdate):
 
 def readAvailableDataFile():
 	try:
-		reader = open(EM_util.JSONAvailableDataFile, 'rb')
+		reader = open(EM_util.webJSONAvailableDataFile, 'rb')
 		data = reader.read()
 	except:
 		raise
@@ -152,8 +139,8 @@ def findNormalDistRange(data):
 	return func_round(stdVols - 0.5*np.sign(stdVols))
 
 def generateFirstOrderDifferenceWords(ticker, dataPeriodicity=None, periods=[]):
-	wordType = WORD_TYPES['1OD']
-	wordSuperType = WORD_SUPER_TYPES['generic']
+	wordType = EM_util.wordTypes['1OD']
+	wordSuperType = EM_util.wordSuperTypes['generic']
 
 	dataSeriesID = EM_DBHelp.retrieve_DataSeriesID(	db_connection, db_cursor, 
 													dataTicker=ticker, 
@@ -239,8 +226,8 @@ def generateFirstOrderDifferenceWords(ticker, dataPeriodicity=None, periods=[]):
 		columnName = 'dt_last_generated'; value = EM_util.dtGetNowAsEpoch(); sendToDB()
 
 def generateTimeToRecessionStats():
-	wordType = WORD_TYPES['timeToRecession']
-	wordSuperType = WORD_SUPER_TYPES['recessionSignal']
+	wordType = EM_util.wordTypes['timeToRecession']
+	wordSuperType = EM_util.wordSuperTypes['recessionSignal']
 
 	getFromDB = lambda: \
 	EM_DBHelp.retrieve_DataSeriesMetaData(db_connection, db_cursor, columnName, seriesID=dataSeriesID)
