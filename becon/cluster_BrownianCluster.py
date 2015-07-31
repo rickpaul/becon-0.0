@@ -47,7 +47,7 @@ class BrownClusterModel:
 		if wordDataWidth != self.wordDataWidth:
 			raise DataCompatabilityError('wordDataWidth', wordDataWidth, self.wordDataWidth)
 		# Add Data. Simple Concatenation
-		self.wordSequence = self.wordSequence + self.tuplefyWordSequence(wordSequence)
+		self.wordSequence = self.wordSequence + self.addTrainingData_tuplefyWordSequence(wordSequence)
 		# Update Sequence Length
 		self.sequenceLength += wordDataLength
 		# Reset Variables and Flags
@@ -56,7 +56,7 @@ class BrownClusterModel:
 			print 'Added new word sequence of length {0}.'.format(wordDataLength)
 			print 'Total word sequence is now {0}.'.format(self.sequenceLength)
 
-	def tuplefyWordSequence(self, wordSequence):
+	def addTrainingData_tuplefyWordSequence(self, wordSequence):
 		wordDataLength = len(wordSequence)
 		newWordSequence = [None] * wordDataLength #Pre-allocate. Probably not worthwhile...
 		for i in range(wordDataLength):
@@ -71,28 +71,28 @@ class BrownClusterModel:
 		self.clusters = []
 		self.clusterNGramCounts = {}
 		self.clusterCostTable = {}
-		self.clusterMergeCostReductionTable = {} 
+		self.mergeCostReductions = {} 
 		self.mergeHistory = []
 		self.binaryRepresentation = {}
 
 		# Add New Tasks
 		self.TaskStack = [] # OK to reset in this case
-		self.TaskStack.append(lambda: self.defineClusterMergeCostReductionTable())
-		self.TaskStack.append(lambda: self.defineClusterCostTable())
-		self.TaskStack.append(lambda: self.defineClusterCounts())
-		self.TaskStack.append(lambda: self.defineClusterSequence())
-		self.TaskStack.append(lambda: self.defineWordClusterMap())
+		self.TaskStack.append(lambda: self.resetData_definemergeCostReductions())
+		self.TaskStack.append(lambda: self.resetData_defineClusterCostTable())
+		self.TaskStack.append(lambda: self.resetData_defineClusterCounts())
+		self.TaskStack.append(lambda: self.resetData_defineClusterSequence())
+		self.TaskStack.append(lambda: self.resetData_defineWordClusterMap())
 
 		# Clear The Tasks
-		self.clearTaskStack()
+		self.taskStack_clearTaskStack()
 
-	def PerformSingleTask(self, f):
+	def taskStack_performSingleTask(self, f):
 		# TODO: Print out what it's doing.
 		return f() #in case f() returns something
 
 	# Returns: 	True if there are tasks left to perform. 
 	#			False if there are no tasks left to perform.
-	def performTaskStack_NextStep(self):
+	def taskStack_performNextTask(self):
 		if len(self.TaskStack) == 0:
 			if self.verbose:
 				print 'No Tasks Remain in TaskStack.'
@@ -101,16 +101,16 @@ class BrownClusterModel:
 			fn = self.TaskStack.pop()
 			if self.verbose:
 				print 'Performing next task from TaskStack: '
-			self.PerformSingleTask(fn)
+			self.taskStack_performSingleTask(fn)
 			return True
 
-	def clearTaskStack(self):
+	def taskStack_clearTaskStack(self):
 		if self.verbose:
 			print 'Clearing TaskStack...'
-		while self.performTaskStack_NextStep():
+		while self.taskStack_performNextTask():
 			pass
 
-	def defineWordClusterMap(self, numInitialClusters=None):
+	def resetData_defineWordClusterMap(self, numInitialClusters=None):
 		if self.verbose:
 			print '...Defining Word-to-Cluster Mapping...'
 		start = timer()
@@ -127,17 +127,17 @@ class BrownClusterModel:
 			print "\t{0} clusters created.".format(len(self.wordClusterMapping))
 			self.printTimeElapsed(start, end)
 
-	def getBigramCount(self, cluster1, cluster2):
+	def clusterCount_getBigramCount(self, cluster1, cluster2):
 		return self.clusterNGramCounts[1].get((cluster1, cluster2), 0.0)
 
-	def getClusterCount(self, cluster1):
+	def clusterCount_getClusterCount(self, cluster1):
 		return self.clusterNGramCounts[0][cluster1] # Throw an error if not found
 
-	def defineClusterCounts(self):
+	def resetData_defineClusterCounts(self):
 		if self.verbose:	
 			print '...Counting Cluster Unigrams and Bigrams from Cluster Sequence...'	
 		start = timer()
-		self.clusterNGramCounts = self.defineClusterCounts_generic(self.clusterSequence, )
+		self.clusterNGramCounts = self.resetData_defineClusterCounts_generic(self.clusterSequence, )
 		self.clusters = self.clusterNGramCounts[0].keys()
 		self.originalClusters = copy(self.clusters)
 		end = timer()
@@ -151,7 +151,7 @@ class BrownClusterModel:
 				print "\tNo unclustered words remain in the dataset."
 			self.printTimeElapsed(start, end)
 
-	def defineClusterCounts_generic(self, clusterSequence):
+	def resetData_defineClusterCounts_generic(self, clusterSequence):
 		# clusterSequence = [self.START_CLUSTER_SYMBOL] + clusterSequence
 		sequenceLength = len(clusterSequence)
 		clusterNGramCounts = {}
@@ -166,61 +166,61 @@ class BrownClusterModel:
 			#CONSIDER: Does the concept of discounted probabilities mean anything here?
 		return clusterNGramCounts
 
-	def defineClusterSequence(self):
+	def resetData_defineClusterSequence(self):
 		if self.verbose:	
 			print '...Creating Cluster Sequence from Word-to-Cluster Mapping and Word Sequence...'
 		start = timer()
-		self.clusterSequence = self.defineClusterSequence_generic(self.wordSequence, )
+		self.clusterSequence = self.resetData_defineClusterSequence_generic(self.wordSequence, )
 		end = timer()
 		if self.verbose:
 			print "Found cluster sequence for {0} words.".format(sequenceLength)
 			self.printTimeElapsed(start, end)
 
-	def defineClusterSequence_generic(self, wordSequence):
+	def resetData_defineClusterSequence_generic(self, wordSequence):
 		sequenceLength = len(wordSequence)
 		clusterSequence = [None] * sequenceLength
 		for i in range(sequenceLength):
 			clusterSequence[i] = self.wordClusterMapping.get(wordSequence[i], self.NO_CLUSTER_SYMBOL)
 		return clusterSequence
 
-	def defineClusterCostTable(self):
+	def resetData_defineClusterCostTable(self):
 		if self.verbose:	
 			print '...Creating Cluster Cost Table (Finding Bigram Graph Edge Costs)...'		
 		start = timer()
 		numClusters = len(self.clusters)
 		for i in range(numClusters):
 			c1 = self.clusters[i]
-			cnt_c1 = self.getClusterCount(c1)
+			cnt_c1 = self.clusterCount_getClusterCount(c1)
 			for j in range(i, numClusters):
 				c2 = self.clusters[j]
-				cost = self.findClusterCost_SingleClusterPair(c1, c2, cnt_c1=cnt_c1)
+				cost = self.clusterCost_findSingleClusterPairCost(c1, c2, cnt_c1=cnt_c1)
 				self.clusterCostTable[(c1,c2)] = cost
 		end = timer()
 		if self.verbose:
 			print "Defined Cluster Cost Table."
 			self.printTimeElapsed(start, end)
 
-	def findClusterCost_SingleClusterPair(self, c1, c2, cnt_c1=None, cnt_c2=None):
-		cnt_c1 = self.getClusterCount(c1) if cnt_c1 is None else cnt_c1
+	def clusterCost_findSingleClusterPairCost(self, c1, c2, cnt_c1=None, cnt_c2=None):
+		if cnt_c1 is None : cnt_c1 = self.clusterCount_getClusterCount(c1)
 		if c1 == c2:
-			bigramCount = self.getBigramCount(c1, c1)
-			return self.findMutualInformation(bigramCount, cnt_c1, cnt_c1)
+			bigramCount = self.clusterCount_getBigramCount(c1, c1)
+			return self.mutualInfo_Equation(bigramCount, cnt_c1, cnt_c1)
 		else:
-			cnt_c2 = self.getClusterCount(c2) if cnt_c2 is None else cnt_c2
-			bigramCount = self.getBigramCount(c1, c2)
-			cost = self.findMutualInformation(bigramCount, cnt_c1, cnt_c2)
-			bigramCount = self.getBigramCount(c2, c1)
-			cost += self.findMutualInformation(bigramCount, cnt_c1, cnt_c2)
+			if cnt_c2 is None : cnt_c2 = self.clusterCount_getClusterCount(c2)		
+			bigramCount = self.clusterCount_getBigramCount(c1, c2)
+			cost = self.mutualInfo_Equation(bigramCount, cnt_c1, cnt_c2)
+			bigramCount = self.clusterCount_getBigramCount(c2, c1)
+			cost += self.mutualInfo_Equation(bigramCount, cnt_c1, cnt_c2)
 			return cost		
 
-	def getClusterCostBigram(self, c1, c2):
+	def clusterCost_getClusterCostBigram(self, c1, c2):
 		# Assumes one of the two is in the table...
 		return (c1, c2) if (c1, c2) in self.clusterCostTable else (c2, c1)
 
-	def getClusterCost(self, c1, c2):
-		return self.clusterCostTable[self.getClusterCostBigram(c1, c2)]
+	def clusterCost_getClusterCost(self, c1, c2):
+		return self.clusterCostTable[self.clusterCost_getClusterCostBigram(c1, c2)]
 
-	def findMutualInformation(self, bigramCount, unigram1Count, unigram2Count):
+	def mutualInfo_Equation(self, bigramCount, unigram1Count, unigram2Count):
 		if bigramCount > 0:
 			# I've been uncomfortable with logs being above/below 0, but what I'm coming to realize is that the zero
 			# intercept of mutual information is where information goes from useful to not..?
@@ -237,32 +237,32 @@ class BrownClusterModel:
 	# If you want to treat 1 and 2 as A, vis-a-vis 3, then:
 	# you need to account for 1->3, 2->3, 3->1, and 3->2 connections, and treat them all as A->3 and 3->A;
 	# you also need to account for P(A) = P(1)+P(2)
-	def findMutualInformationOfMergedClusters_OtherConnection(	self, mc1, mc2, c3, cnt_mc1=None, cnt_mc2=None, cnt_c3=None):
-		cnt_mc1 = self.getClusterCount(mc1) if cnt_mc1 is None else cnt_mc1
-		cnt_mc2 = self.getClusterCount(mc2) if cnt_mc2 is None else cnt_mc2
-		cnt_c3 = self.getClusterCount(c3) if cnt_c3 is None else cnt_c3
+	def mutualInfo_PairVersusAnother(self, mc1, mc2, c3, cnt_mc1=None, cnt_mc2=None, cnt_c3=None):
+		if cnt_mc1 is None : self.clusterCount_getClusterCount(mc1)
+		if cnt_mc2 is None : cnt_mc2 = self.clusterCount_getClusterCount(mc2)
+		if cnt_c3 is None : cnt_c3 = self.clusterCount_getClusterCount(c3)
 		mutualInformation = 0.0
-		bigram1Count = self.getBigramCount(c3, mc1) # 3->1
-		bigram2Count = self.getBigramCount(c3, mc2) # 3->2
-		mutualInformation += self.findMutualInformation((bigram1Count + bigram2Count), cnt_c3, (cnt_mc1+cnt_mc2)) #3->A
-		bigram1Count = self.getBigramCount(mc1, c3) # 1->3
-		bigram2Count = self.getBigramCount(mc2, c3) # 2->3
-		mutualInformation += self.findMutualInformation((bigram1Count + bigram2Count), cnt_c3, (cnt_mc1+cnt_mc2)) #A->3
+		bigram1Count = self.clusterCount_getBigramCount(c3, mc1) # 3->1
+		bigram2Count = self.clusterCount_getBigramCount(c3, mc2) # 3->2
+		mutualInformation += self.mutualInfo_Equation((bigram1Count + bigram2Count), cnt_c3, (cnt_mc1+cnt_mc2)) #3->A
+		bigram1Count = self.clusterCount_getBigramCount(mc1, c3) # 1->3
+		bigram2Count = self.clusterCount_getBigramCount(mc2, c3) # 2->3
+		mutualInformation += self.mutualInfo_Equation((bigram1Count + bigram2Count), cnt_c3, (cnt_mc1+cnt_mc2)) #A->3
 		return mutualInformation
 
 	# This is the mutual information from treating two separate clusters as one.
 	# If you want to treat 1 and 2 as A, then:
 	# you need to account for 1->2, 2->1, 1->1, and 2->2 connections, and treat them all as A->A;
 	# you need to account for P(A) = P(1)+P(2)
-	def findMutualInformationOfMergedClusters_SelfConnection(self, c1, c2, cnt_c1=None, cnt_c2=None):
-		cnt_c1 = self.getClusterCount(c1) if cnt_c1 is None else cnt_c1
-		cnt_c2 = self.getClusterCount(c2) if cnt_c2 is None else cnt_c2
-		bigram1Count = self.getBigramCount(c1, c2) # 1->2
-		bigram2Count = self.getBigramCount(c2, c1) # 2->1
-		bigram3Count = self.getBigramCount(c1, c1) # 1<->1
-		bigram4Count = self.getBigramCount(c2, c2) # 2<->2
+	def mutualInfo_PairIntoOne(self, c1, c2, cnt_c1=None, cnt_c2=None):
+		if cnt_c1 is None : cnt_c1 = self.clusterCount_getClusterCount(c1)
+		if cnt_c2 is None : cnt_c2 = self.clusterCount_getClusterCount(c2)
+		bigram1Count = self.clusterCount_getBigramCount(c1, c2) # 1->2
+		bigram2Count = self.clusterCount_getBigramCount(c2, c1) # 2->1
+		bigram3Count = self.clusterCount_getBigramCount(c1, c1) # 1<->1
+		bigram4Count = self.clusterCount_getBigramCount(c2, c2) # 2<->2
 		totalBigramCount = bigram1Count + bigram2Count + bigram3Count + bigram4Count
-		return self.findMutualInformation(totalBigramCount, (cnt_c1+cnt_c2), (cnt_c1+cnt_c2))
+		return self.mutualInfo_Equation(totalBigramCount, (cnt_c1+cnt_c2), (cnt_c1+cnt_c2))
 
 	# This is the mutual information from treating 4 separate clusters as two.
 	# If you want to treat 1 and 2 as A, and 3 and 4 as B, then:
@@ -270,52 +270,52 @@ class BrownClusterModel:
 	# you need to account for 3->1, 4->1, 3->2, and 4->2 connections, and treat them all as B->A;
 	# you need to account for P(A) = P(1)+P(2)
 	# you need to account for P(B) = P(3)+P(4)
-	def findMutualInformationOfMergedClusters_PairPairConnection(self, c1, c2, c3, c4, cnt_c1=None, cnt_c2=None, cnt_c3=None, cnt_c4=None):
-		cnt_c1 = self.getClusterCount(c1) if cnt_c1 is None else cnt_c1
-		cnt_c2 = self.getClusterCount(c2) if cnt_c2 is None else cnt_c2
-		cnt_c3 = self.getClusterCount(c3) if cnt_c3 is None else cnt_c3
-		cnt_c4 = self.getClusterCount(c4) if cnt_c4 is None else cnt_c4
+	def mutualInfo_PairVersusPair(self, c1, c2, c3, c4, cnt_c1=None, cnt_c2=None, cnt_c3=None, cnt_c4=None):
+		if cnt_c1 is None : cnt_c1 = self.clusterCount_getClusterCount(c1)
+		if cnt_c2 is None : cnt_c2 = self.clusterCount_getClusterCount(c2)
+		if cnt_c3 is None : cnt_c3 = self.clusterCount_getClusterCount(c3)
+		if cnt_c4 is None : cnt_c4 = self.clusterCount_getClusterCount(c4)
 		mutualInformation = 0.0
 		 # Group 1 to Group 2
-		bigram1Count = self.getBigramCount(c1, c3)
-		bigram2Count = self.getBigramCount(c1, c4)
-		bigram3Count = self.getBigramCount(c2, c3)
-		bigram4Count = self.getBigramCount(c2, c4)
+		bigram1Count = self.clusterCount_getBigramCount(c1, c3)
+		bigram2Count = self.clusterCount_getBigramCount(c1, c4)
+		bigram3Count = self.clusterCount_getBigramCount(c2, c3)
+		bigram4Count = self.clusterCount_getBigramCount(c2, c4)
 		totalBigramCount = bigram1Count + bigram2Count + bigram3Count + bigram4Count
-		mutualInformation += self.findMutualInformation(totalBigramCount, (cnt_c1+cnt_c2), (cnt_c3+cnt_c4))
+		mutualInformation += self.mutualInfo_Equation(totalBigramCount, (cnt_c1+cnt_c2), (cnt_c3+cnt_c4))
 		# Group 2 to Group 1
-		bigram1Count = self.getBigramCount(c3, c1)
-		bigram2Count = self.getBigramCount(c3, c2)
-		bigram3Count = self.getBigramCount(c4, c1)
-		bigram4Count = self.getBigramCount(c4, c2)
+		bigram1Count = self.clusterCount_getBigramCount(c3, c1)
+		bigram2Count = self.clusterCount_getBigramCount(c3, c2)
+		bigram3Count = self.clusterCount_getBigramCount(c4, c1)
+		bigram4Count = self.clusterCount_getBigramCount(c4, c2)
 		totalBigramCount = bigram1Count + bigram2Count + bigram3Count + bigram4Count
-		mutualInformation += self.findMutualInformation(totalBigramCount, (cnt_c1+cnt_c2), (cnt_c3+cnt_c4))
+		mutualInformation += self.mutualInfo_Equation(totalBigramCount, (cnt_c1+cnt_c2), (cnt_c3+cnt_c4))
 		return mutualInformation
 
 	# This function gives the merge reduction cost for a single cluster pair using the naive algorithm.
 	# This algorithm has been verified. 
-	def defineClusterMergeCostReductionTable_singleClusterPair(self, c1, c2):
-		cnt_c1 = self.getClusterCount(c1)
-		cnt_c2 = self.getClusterCount(c2)
+	def mergeCost_SinglePair(self, c1, c2):
+		cnt_c1 = self.clusterCount_getClusterCount(c1)
+		cnt_c2 = self.clusterCount_getClusterCount(c2)
 		clusterCostReduction = 0.0
 		clusterCostAddition = 0.0
 		for c3 in self.clusters:
 			if c3 == c1 or c3 == c2:
 				continue #deal with these separately. 
-			clusterCostReduction += self.getClusterCost(c1, c3) # 1<->3 (Encompasses 1->3 and 3->1)
-			clusterCostReduction += self.getClusterCost(c2, c3) # 2<->3 (Encompasses 2->3 and 3->2)
+			clusterCostReduction += self.clusterCost_getClusterCost(c1, c3) # 1<->3 (Encompasses 1->3 and 3->1)
+			clusterCostReduction += self.clusterCost_getClusterCost(c2, c3) # 2<->3 (Encompasses 2->3 and 3->2)
 			# This is the procedure you get if you try to combine two nodes into one:
 			# P(c,c')*log(P(c,c')/P(c)/P(c'))
-			cnt_c3 = self.getClusterCount(c3)
-			clusterCostAddition += self.findMutualInformationOfMergedClusters_OtherConnection(c1, c2, c3, cnt_c1, cnt_c2, cnt_c3)
+			cnt_c3 = self.clusterCount_getClusterCount(c3)
+			clusterCostAddition += self.mutualInfo_PairVersusAnother(c1, c2, c3, cnt_c1, cnt_c2, cnt_c3)
 		# Deal with connections among the pair
-		clusterCostReduction += self.getClusterCost(c1, c2) # 1<->2 (Encompasses 1->2 and 2->1)
-		clusterCostReduction += self.getClusterCost(c1, c1) # 1<->1 
-		clusterCostReduction += self.getClusterCost(c2, c2) # 2<->2
-		clusterCostAddition += self.findMutualInformationOfMergedClusters_SelfConnection(c1, c2, cnt_c1, cnt_c2)
+		clusterCostReduction += self.clusterCost_getClusterCost(c1, c2) # 1<->2 (Encompasses 1->2 and 2->1)
+		clusterCostReduction += self.clusterCost_getClusterCost(c1, c1) # 1<->1 
+		clusterCostReduction += self.clusterCost_getClusterCost(c2, c2) # 2<->2
+		clusterCostAddition += self.mutualInfo_PairIntoOne(c1, c2, cnt_c1, cnt_c2)
 		return (clusterCostAddition - clusterCostReduction)
 
-	def defineClusterMergeCostReductionTable(self):
+	def resetData_definemergeCostReductions(self):
 		start = timer()
 		clusters = self.clusters
 		numClusters = len(self.clusters)
@@ -323,19 +323,21 @@ class BrownClusterModel:
 			c1 = self.clusters[i]
 			for j in range(i):
 				c2 = self.clusters[j]
-				mergeCost = self.defineClusterMergeCostReductionTable_singleClusterPair(c1, c2)
-				self.clusterMergeCostReductionTable[self.getClusterCostBigram(c1, c2)] = mergeCost
+				mergeCost = self.mergeCost_SinglePair(c1, c2)
+				self.mergeCostReductions[self.clusterCost_getClusterCostBigram(c1, c2)] = mergeCost
 		end = timer()
 		if self.verbose:
 			print "Defined Cluster Merge Cost Reduction Table."
 			self.printTimeElapsed(start, end)
 
 	def mergeClusters_findMergeClusters(self):
-		if len(self.clusterMergeCostReductionTable) == 0: # Necessary?
+		if len(self.mergeCostReductions) == 0: # Necessary?
 			return (False, None) # Necessary?
-		return (True, sorted(self.clusterMergeCostReductionTable.items(), key=itemgetter(1), reverse=True)[0][0])
+		return (True, sorted(self.mergeCostReductions.items(), key=itemgetter(1), reverse=True)[0][0])
 
-	def removeBigramCount(self, c1, c2):
+	# Change NGram Counts 
+	# Remove BigramCount(1,2) and return value
+	def mergeClusters_removeBigramCount(self, c1, c2):
 		if (c1, c2) in self.clusterNGramCounts[1]:
 			count = self.clusterNGramCounts[1][(c1, c2)]
 			del self.clusterNGramCounts[1][(c1, c2)]
@@ -343,16 +345,19 @@ class BrownClusterModel:
 		else:
 			return 0
 
-	def contributeBigramCount(self, c1, c2, addCount):
+	# Change NGram Counts 
+	# Add count to BigramCount(1,2) (create if it doesn't exist)
+	def mergeClusters_contributeBigramCount(self, c1, c2, addCount):
 		if (c1, c2) in self.clusterNGramCounts[1]:
 			self.clusterNGramCounts[1][(c1, c2)] += addCount
 		else:
 			self.clusterNGramCounts[1][(c1, c2)] = addCount
 
-	# Change NGram Counts from merging 1 into 2 (delete 2)
+	# Change NGram Counts from merging 1 into 2 
+	# We're deleting 2
 	def mergeClusters_changeNGramCounts(self, mc1, mc2):
 		# Change Unigram Counts
-		self.clusterNGramCounts[0][mc1] += self.getClusterCount(mc2)
+		self.clusterNGramCounts[0][mc1] += self.clusterCount_getClusterCount(mc2)
 		del self.clusterNGramCounts[0][mc2]
 		# Change Unigram Counts / Reset Saved Cluster Keys
 		self.clusters = self.clusterNGramCounts[0].keys()
@@ -361,51 +366,53 @@ class BrownClusterModel:
 			if c3 == mc1 or c3 == mc2:
 				continue #deal with these separately. 
 			else:
-				self.contributeBigramCount(c3, mc1, self.removeBigramCount(c3, mc2)) # 3->2 => 3->1
-				self.contributeBigramCount(mc1, c3, self.removeBigramCount(mc2, c3)) # 2->3 => 1->3
+				self.mergeClusters_contributeBigramCount(c3, mc1, self.mergeClusters_removeBigramCount(c3, mc2)) # 3->2 => 3->1
+				self.mergeClusters_contributeBigramCount(mc1, c3, self.mergeClusters_removeBigramCount(mc2, c3)) # 2->3 => 1->3
 		# Change Bigram Counts / Change Merging Clusters
 		# Don't need to do 1->1
 		bigramCount = 0
-		bigramCount += self.removeBigramCount(mc2, mc1) # 2->1 => 1->1
-		bigramCount += self.removeBigramCount(mc1, mc2) # 1->2 => 1->1
-		bigramCount += self.removeBigramCount(mc2, mc2) # 2->2 => 1->1
-		self.contributeBigramCount(mc1, mc1, bigramCount) # all => 1->1
+		bigramCount += self.mergeClusters_removeBigramCount(mc2, mc1) # 2->1 => 1->1
+		bigramCount += self.mergeClusters_removeBigramCount(mc1, mc2) # 1->2 => 1->1
+		bigramCount += self.mergeClusters_removeBigramCount(mc2, mc2) # 2->2 => 1->1
+		self.mergeClusters_contributeBigramCount(mc1, mc1, bigramCount) # all => 1->1
 
-	# Change Edge Costs from merging 1 into 2 (delete 2)
+	# Change Cluster Costs from merging 1 into 2
+	# We're deleting 2
+	# Depends on NEW Cluster Counts (i.e. NGram Counts)
 	def mergeClusters_changeClusterCosts(self, mc1, mc2):
-		new_cnt_mc1 = self.getClusterCount(mc1)
+		new_cnt_mc1 = self.clusterCount_getClusterCount(mc1)  # Depends on NEW Cluster Counts
 		# Change ClusterCost Table / Change Non-Merging Clusters
 		for c3 in self.clusters:
 			if c3 == mc1 or c3 == mc2:
 				continue #deal with these separately. 
 			else:
-				cost = self.findClusterCost_SingleClusterPair(mc1, c3, cnt_c1=new_cnt_mc1) # Depends on NEW Cluster Counts
-				self.clusterCostTable[self.getClusterCostBigram(mc1, c3)] = cost
-				del self.clusterCostTable[self.getClusterCostBigram(mc2, c3)]
+				cost = self.clusterCost_findSingleClusterPairCost(mc1, c3, cnt_c1=new_cnt_mc1) # Depends on NEW Cluster Counts
+				self.clusterCostTable[self.clusterCost_getClusterCostBigram(mc1, c3)] = cost
+				del self.clusterCostTable[self.clusterCost_getClusterCostBigram(mc2, c3)]
 		# Change ClusterCost Table / Change Merging Clusters
-		cost = self.findClusterCost_SingleClusterPair(mc1, mc1, cnt_c1=new_cnt_mc1)
-		self.clusterCostTable[self.getClusterCostBigram(mc1, mc1)] = cost
-		del self.clusterCostTable[self.getClusterCostBigram(mc2, mc2)]				
+		cost = self.clusterCost_findSingleClusterPairCost(mc1, mc1, cnt_c1=new_cnt_mc1)
+		self.clusterCostTable[self.clusterCost_getClusterCostBigram(mc1, mc1)] = cost
+		del self.clusterCostTable[self.clusterCost_getClusterCostBigram(mc2, mc2)]				
 
-	def mergeTopClusters(self, updateClusterSequence=False):
+	def mergeClusters_mergeTop(self, updateClusterSequence=False):
 		# 1) Find Merge Clusters
 		(success, mergeClusters) = self.mergeClusters_findMergeClusters()
 		if not success:
 			return False
 		(c1, c2) = mergeClusters
 		if self.verbose:
-			cost = self.clusterMergeCostReductionTable[self.getClusterCostBigram(c1, c2)]
+			cost = self.mergeCostReductions[self.clusterCost_getClusterCostBigram(c1, c2)]
 			print 'Merging Cluster {1} into Cluster {0}, with clusterCostReduction={2}'.format(c1, c2, cost)
 		# 2) Change Merge Cost Reduction using OLD Ngram Counts 
-		self.mergeClusters_UpdateMergeCostReductionTable_UnmergedClusters(c1, c2)
-		self.mergeClusters_UpdateMergeCostReductionTable_RemoveDeletedCluster(c2)
+		self.mergeClusters_changeMergeCostReductions_UnmergedClusters(c1, c2)
+		self.mergeClusters_changeMergeCostReductions_RemoveDeletedCluster(c2)
 		# 3) Change Unigram and Bigram Counts
 		self.mergeClusters_changeNGramCounts(c1, c2)
 		# 4) Change Cluster Cost Table
 		self.mergeClusters_changeClusterCosts(c1, c2)
 		# 5) Change Merge Cost Reduction using NEW Ngram Counts 
-		self.mergeClusters_UpdateMergeCostReductionTable_MergedClusters(c1)
-		# 6) Record Change in MergeLog
+		self.mergeClusters_changeMergeCostReductions_MergedClusters(c1)
+		# 6) Record Change in MergeHistory
 		self.mergeHistory.append((c1,c2))
 		# TODO: Skip mergeHistory; go straight to dictionaryrepresentation.
 		# 7) Update Cluster Sequence (Optional)
@@ -414,53 +421,53 @@ class BrownClusterModel:
 			self.mergeClusters_updateClusterSequence(c1, c2)
 		return True
 
-	# This updates the mergeCostReductionTable after mergeCluster1 and mergeCluster2 are merged.
+	# This updates the mergeCostReductions after mergeCluster1 and mergeCluster2 are merged.
 	# This relies on NEW (i.e. post-merge) NGram Counts
 	# That means mc2 shouldn't be in any tables anymore
-	def mergeClusters_UpdateMergeCostReductionTable_MergedClusters(self, mc1):
+	def mergeClusters_changeMergeCostReductions_MergedClusters(self, mc1):
 		for c3 in self.clusters:
 			if c3 == mc1:
 				continue
 			else:
-				newMergeCostReduction = self.defineClusterMergeCostReductionTable_singleClusterPair(mc1, c3)
-				self.clusterMergeCostReductionTable[self.getClusterCostBigram(mc1, c3)] = newMergeCostReduction
+				newMergeCostReduction = self.mergeCost_SinglePair(mc1, c3)
+				self.mergeCostReductions[self.clusterCost_getClusterCostBigram(mc1, c3)] = newMergeCostReduction
 
-	def mergeClusters_UpdateMergeCostReductionTable_RemoveDeletedCluster(self, mc2):
+	def mergeClusters_changeMergeCostReductions_RemoveDeletedCluster(self, mc2):
 		for c3 in self.clusters:
 			if c3 == mc2:
 				continue
 			else:
-				del self.clusterMergeCostReductionTable[self.getClusterCostBigram(mc2, c3)]
+				del self.mergeCostReductions[self.clusterCost_getClusterCostBigram(mc2, c3)]
 
-	# This updates the mergeCostReductionTable after mergeCluster1 and mergeCluster2 are merged.
+	# This updates the mergeCostReductions after mergeCluster1 and mergeCluster2 are merged.
 	# This relies on OLD (i.e. pre-merge) NGram Counts
-	def mergeClusters_UpdateMergeCostReductionTable_UnmergedClusters(self, mc1, mc2):
-		cnt_mc1 = self.getClusterCount(mc1)
-		cnt_mc2 = self.getClusterCount(mc2)
+	def mergeClusters_changeMergeCostReductions_UnmergedClusters(self, mc1, mc2):
+		cnt_mc1 = self.clusterCount_getClusterCount(mc1)
+		cnt_mc2 = self.clusterCount_getClusterCount(mc2)
 		numClusters = len(self.clusters)
 		for i in range(numClusters):
 			c3 = self.clusters[i]
 			if (c3 == mc1 or c3 == mc2):
 				continue
-			cnt_c3 = self.getClusterCount(c3)
+			cnt_c3 = self.clusterCount_getClusterCount(c3)
 			for j in range(i):
 				c4 = self.clusters[j]
 				if (c4 == mc1 or c4 == mc2):
 					continue
-				cnt_c4 = self.getClusterCount(c4)
+				cnt_c4 = self.clusterCount_getClusterCount(c4)
 				mergeCostAddition = 0
-				mergeCostAddition += self.getClusterCost(c3, mc1) # c3<->mc1 
-				mergeCostAddition += self.getClusterCost(c3, mc2) # c3<->mc2 
-				mergeCostAddition += self.getClusterCost(c4, mc1) # c4<->mc1 
-				mergeCostAddition += self.getClusterCost(c4, mc2) # c4<->mc2
-				mergeCostAddition += self.findMutualInformationOfMergedClusters_PairPairConnection(c3, c4, mc1, mc2, cnt_c3, cnt_c4, cnt_mc1, cnt_mc2) # (c3+c4)<->(mc1+mc2)
+				mergeCostAddition += self.clusterCost_getClusterCost(c3, mc1) # c3<->mc1 
+				mergeCostAddition += self.clusterCost_getClusterCost(c3, mc2) # c3<->mc2 
+				mergeCostAddition += self.clusterCost_getClusterCost(c4, mc1) # c4<->mc1 
+				mergeCostAddition += self.clusterCost_getClusterCost(c4, mc2) # c4<->mc2
+				mergeCostAddition += self.mutualInfo_PairVersusPair(c3, c4, mc1, mc2, cnt_c3, cnt_c4, cnt_mc1, cnt_mc2) # (c3+c4)<->(mc1+mc2)
 				mergeCostReduction = 0
-				mergeCostReduction += self.findMutualInformationOfMergedClusters_OtherConnection(mc1, mc2, c3, cnt_mc1, cnt_mc2, cnt_c3) # c3<->(mc1+mc2)
-				mergeCostReduction += self.findMutualInformationOfMergedClusters_OtherConnection(mc1, mc2, c4, cnt_mc1, cnt_mc2, cnt_c4) # c4<->(mc1+mc2)
-				mergeCostReduction += self.findMutualInformationOfMergedClusters_OtherConnection(c3, c4, mc1, cnt_c3, cnt_c4, cnt_mc1) # mc1<->(c3+c4)
-				mergeCostReduction += self.findMutualInformationOfMergedClusters_OtherConnection(c3, c4, mc2, cnt_c3, cnt_c4, cnt_mc2) # mc2<->(c3+c4)
+				mergeCostReduction += self.mutualInfo_PairVersusAnother(mc1, mc2, c3, cnt_mc1, cnt_mc2, cnt_c3) # c3<->(mc1+mc2)
+				mergeCostReduction += self.mutualInfo_PairVersusAnother(mc1, mc2, c4, cnt_mc1, cnt_mc2, cnt_c4) # c4<->(mc1+mc2)
+				mergeCostReduction += self.mutualInfo_PairVersusAnother(c3, c4, mc1, cnt_c3, cnt_c4, cnt_mc1) # mc1<->(c3+c4)
+				mergeCostReduction += self.mutualInfo_PairVersusAnother(c3, c4, mc2, cnt_c3, cnt_c4, cnt_mc2) # mc2<->(c3+c4)
 				mergeCostChange = (mergeCostAddition - mergeCostReduction)
-				self.clusterMergeCostReductionTable[self.getClusterCostBigram(c3, c4)] += mergeCostChange
+				self.mergeCostReductions[self.clusterCost_getClusterCostBigram(c3, c4)] += mergeCostChange
 
 	def performClustering_convertMergeHistoryToBinaryWords(self):
 		self.binaryRepresentation = dict.fromkeys(self.originalClusters, '')
@@ -587,7 +594,7 @@ class BrownClusterModel:
 	def performBrownianClustering(self):
 		leftToMerge=True
 		while leftToMerge:
-			leftToMerge = self.mergeTopClusters()
+			leftToMerge = self.mergeClusters_mergeTop()
 		self.performClustering_convertMergeHistoryToBinaryWords()
 		self.performClustering_findInterClusterDistances()
 		self.performClustering_establishDistanceMeasure()
@@ -615,11 +622,11 @@ class BrownClusterModel:
 		start = timer()
 		qualityCost = 0
 		for c1 in self.clusters:
-			cnt_c1 = self.getClusterCount(c1)
+			cnt_c1 = self.clusterCount_getClusterCount(c1)
 			for c2 in self.clusters:
-				cnt_c2 = self.getClusterCount(c2)
-				bigramCount = self.getBigramCount(c1, c2)
-				qualityCost += self.findMutualInformation(bigramCount, cnt_c1, cnt_c2)
+				cnt_c2 = self.clusterCount_getClusterCount(c2)
+				bigramCount = self.clusterCount_getBigramCount(c1, c2)
+				qualityCost += self.mutualInfo_Equation(bigramCount, cnt_c1, cnt_c2)
 		end = timer()
 		if self.verbose:
 			print "Found Clustering Cost."
@@ -629,9 +636,9 @@ class BrownClusterModel:
 	# def findBrownClustering(self, numInitialClusters=100):
 	# This will be implemented when we have clusters folded in one at a time.
 	# 	raise NotImplementedError
-	# 	self.defineWordClusterMap(self, numInitialClusters=numInitialClusters)
-	# 	clusterSequence = self.defineClusterSequence()
-	# 	clusterNGramCounts = self.defineClusterCounts(clusterSequence)
+	# 	self.resetData_defineWordClusterMap(self, numInitialClusters=numInitialClusters)
+	# 	clusterSequence = self.resetData_defineClusterSequence()
+	# 	clusterNGramCounts = self.resetData_defineClusterCounts(clusterSequence)
 	# 	nextWordPointer = numInitialClusters
 	# 	unclusteredWords = self.NO_CLUSTER_SYMBOL in clusterNGramCounts[0]
 	# 	unmergedClusters = len(clusterNGramCounts) > 1
