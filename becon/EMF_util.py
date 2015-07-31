@@ -86,12 +86,15 @@ FREDForceDownload = '1'
 
 ######################## DATATYPE/WORDTYPE CODE
 wordTypes = {
-	'1OD' : 1,
 	'timeToRecession' : 2,
+	'1OD' : 3,
 }
 wordSuperTypes = {
 	'generic' : 1,
 	'recessionSignal' : 2,
+}
+wordSubTypes = {
+	'NotApplicable' : 1,
 }
 
 dataSupertypes = {

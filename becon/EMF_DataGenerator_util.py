@@ -5,6 +5,8 @@ import logging as log
 
 import EMF_DatabaseHelper as EM_DBHelp
 
+firstOrderDiffPeriodOverride = []
+
 def findFirstOrderDifferences(data):
 	firstOrderDiffData = data[periodLength:] - data[:-periodLength]
 	return findNormalDistRange(firstOrderDiffData)
@@ -38,7 +40,7 @@ class EMF_DataGenerator_Handle:
 		dataSeries.dtype.names = ['dates','values']		
 		return dataSeries
 
-	def feedDataSeries(self, ticker):
+	def findAndStoreDataSeries(self, ticker):
 		self.dataSeriesID = EM_DBHelp.retrieve_DataSeriesID(	self.db_conn, self.db_curs, 
 																dataTicker=ticker, 
 																insertIfNot=False)
@@ -48,11 +50,12 @@ class EMF_DataGenerator_Handle:
 		self.dataSeriesID = None
 		self.dataPeriodicity = None
 
-	def feedWordSeries(self, wordTicker, wordSubType, wordType, wordSuperType, insertIfNot=True):
+	def findAndStoreWordSeries(self, wordTicker, wordSubType, wordType, wordSuperType, insertIfNot=True):
 		self.wordSeriesID = EM_DBHelp.retrieve_WordSeriesID(	self.db_conn, self.db_curs, 
 																self.dataSeriesID, wordType, wordSubType, wordSuperType,
 																wordTicker=wordTicker, 
 																insertIfNot=True)
+		self.__sendToDB('int_word_periodicity', self.dataPeriodicity)
 
 	def resetWordSeries(self):
 		self.wordSeriesID = None
@@ -85,9 +88,7 @@ class EMF_DataGenerator_Handle:
 		log.info('\t%d Historical Words Writing Failed for %s', unsuccessfulInserts, wordTicker)
 		log.info('\tDate range from %s to %s Written for %s', EM_util.dtConvert_EpochtoY_M_D(minDate), EM_util.dtConvert_EpochtoY_M_D(maxDate), wordTicker)
 
-		columnName = 'dt_latest_word'; value = maxDate; self.__sendToDB() # Update Latest Word
 		self.__sendToDB('int_unsuccessful_generations', unsuccessfulInserts)
-		self.__sendToDB('int_word_periodicity', dataPeriodicity)
 		self.__sendToDB('dt_earliest_word', minDate)
 		self.__sendToDB('dt_latest_word', maxDate)
 		self.__sendToDB('dt_last_generated', EM_util.dtGetNowAsEpoch())
