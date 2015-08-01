@@ -16,19 +16,19 @@ class TaskStack:
 	#			False if there are no tasks left to perform.
 	def __taskStack_performNextTask(self):
 		if len(self._TaskStack) == 0:
-			log.info('...No Tasks Remain in TaskStack.')
+			log.debug('...No Tasks Remain in TaskStack.')
 			return False
 		else:
 			(fn, name, desc) = self._TaskStack.pop()
-			log.info('Performing %s: %s', name, desc)
+			log.debug('Performing %s: %s', name, desc)
 			self.__taskStack_performSingleTask(fn, name)
 			return True
 
 	def __logTimeElapsed(self, name, start, end):
-		log.info('Performed %s in %d ms', name, round((end-start)*1000))
+		log.debug('Performed %s in %d ms', name, round((end-start)*1000))
 
 	def clear(self):
-		log.info('Clearing TaskStack...')
+		log.debug('Clearing TaskStack...')
 		while self.__taskStack_performNextTask():
 			pass
 
