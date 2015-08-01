@@ -26,6 +26,8 @@ class EMF_DataGenerator_Handle:
 	def __init__(self, db_connection, db_cursor):
 		self.db_conn = db_connection
 		self.db_curs = db_cursor
+		self.wordSeriesID = None
+		self.dataSeriesID = None
 
 	def __getFromDB(self, columnName):
 		return EM_DBHelp.retrieve_DataSeriesMetaData(self.db_conn, self.db_curs, columnName, seriesID=self.dataSeriesID)
@@ -41,6 +43,8 @@ class EMF_DataGenerator_Handle:
 		return dataSeries
 
 	def findAndStoreDataSeries(self, ticker):
+		assert self.dataSeriesID is None # Force reset before setting (Or new object)
+
 		self.dataSeriesID = EM_DBHelp.retrieve_DataSeriesID(	self.db_conn, self.db_curs, 
 																dataTicker=ticker, 
 																insertIfNot=False)
@@ -51,6 +55,9 @@ class EMF_DataGenerator_Handle:
 		self.dataPeriodicity = None
 
 	def findAndStoreWordSeries(self, wordTicker, wordSubType, wordType, wordSuperType, insertIfNot=True):
+		assert self.wordSeriesID is None  # Force reset before setting (Or new object)
+		assert self.dataSeriesID is not None
+
 		self.wordSeriesID = EM_DBHelp.retrieve_WordSeriesID(	self.db_conn, self.db_curs, 
 																self.dataSeriesID, wordType, wordSubType, wordSuperType,
 																wordTicker=wordTicker, 
@@ -63,6 +70,7 @@ class EMF_DataGenerator_Handle:
 
 	def insertWords(self, dates, values):
 		assert len(dates) == len(values)
+		assert self.wordSeriesID is not None
 
 		minDate = maxint
 		maxDate = -maxint - 1
