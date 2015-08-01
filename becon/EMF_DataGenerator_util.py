@@ -87,14 +87,14 @@ class EMF_DataGenerator_Handle:
 																			dates[i], 
 																			values[i])
 			if not success:
-				log.warning('\t\tFailed to Write Historical Word at %s for %s [value = %f]', wordTicker, date, value)
+				log.warning('Failed to Write Historical Word at %s for %s [value = %f]', wordTicker, date, value)
 				unsuccessfulInserts += 1
 			else:
 				successfulInserts +=1
 	
-		log.info('\t%d Historical Words Written Successfuly for %s', successfulInserts, wordTicker)
-		log.info('\t%d Historical Words Writing Failed for %s', unsuccessfulInserts, wordTicker)
-		log.info('\tDate range from %s to %s Written for %s', EM_util.dtConvert_EpochtoY_M_D(minDate), EM_util.dtConvert_EpochtoY_M_D(maxDate), wordTicker)
+		log.debug('%d Historical Words Written Successfuly for %s', successfulInserts, wordTicker)
+		log.debug('%d Historical Words Writing Failed for %s', unsuccessfulInserts, wordTicker)
+		log.debug('Date range from %s to %s Written for %s', EM_util.dtConvert_EpochtoY_M_D(minDate), EM_util.dtConvert_EpochtoY_M_D(maxDate), wordTicker)
 
 		self.__sendToDB('int_unsuccessful_generations', unsuccessfulInserts)
 		self.__sendToDB('dt_earliest_word', minDate)
