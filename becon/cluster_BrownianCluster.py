@@ -1,12 +1,15 @@
-from timeit import default_timer as timer
 import numpy as np
+import logging as log
+
+from timeit import default_timer as timer
+from math import log as lgrthm
 from copy import copy # Deprecated.
-from math import log
 from collections import Counter
 from operator import itemgetter
+
+from cluster_util import TaskStack
+
 import json
-import pudb # TEST
-import pprint # TEST
 # import scipy.optimize.minimize as minimize
 # import scipy.optimize.OptimizeResult as minResult
 
@@ -22,11 +25,7 @@ class DataCompatabilityError(Exception):
 	def __str__(self):
 		print variableName + ' expected dimension ' + str(expectedVariableLength) + ', found ' + str(variableLength)
 
-class NoDataError(Exception):
-	pass
-
 class BrownClusterModel:
-	TaskStack = []
 
 	START_CLUSTER_SYMBOL = -1
 	NO_CLUSTER_SYMBOL = -2
@@ -36,6 +35,7 @@ class BrownClusterModel:
 		self.verbose_time = False
 		self.wordSequence = []
 		self.sequenceLength = 0
+		self.TaskStack = TaskStack()
 
     #################### Data Addition Methods
     #TODO: Make more efficient. (You don't really need to redo the statistics every time you add data)
@@ -46,17 +46,16 @@ class BrownClusterModel:
 			self.wordDataWidth = wordDataWidth
 		if wordDataWidth != self.wordDataWidth:
 			raise DataCompatabilityError('wordDataWidth', wordDataWidth, self.wordDataWidth)
+		log.info('Adding new word sequence of length %d...', wordDataLength)
 		# Add Data. Simple Concatenation
-		self.wordSequence = self.wordSequence + self.addTrainingData_tuplefyWordSequence(wordSequence)
+		self.wordSequence = self.wordSequence + self.__addTrainingData_tuplefyWordSequence(wordSequence)
 		# Update Sequence Length
 		self.sequenceLength += wordDataLength
 		# Reset Variables and Flags
 		self.resetDataStatistics()
-		if self.verbose:
-			print 'Added new word sequence of length {0}.'.format(wordDataLength)
-			print 'Total word sequence is now {0}.'.format(self.sequenceLength)
+		log.info('Added new word sequence. Total word sequence is now %d.', self.sequenceLength)
 
-	def addTrainingData_tuplefyWordSequence(self, wordSequence):
+	def __addTrainingData_tuplefyWordSequence(self, wordSequence):
 		wordDataLength = len(wordSequence)
 		newWordSequence = [None] * wordDataLength #Pre-allocate. Probably not worthwhile...
 		for i in range(wordDataLength):
@@ -76,43 +75,17 @@ class BrownClusterModel:
 		self.binaryRepresentation = {}
 
 		# Add New Tasks
-		self.TaskStack = [] # OK to reset in this case
-		self.TaskStack.append(lambda: self.resetData_definemergeCostReductions())
-		self.TaskStack.append(lambda: self.resetData_defineClusterCostTable())
-		self.TaskStack.append(lambda: self.resetData_defineClusterCounts())
-		self.TaskStack.append(lambda: self.resetData_defineClusterSequence())
-		self.TaskStack.append(lambda: self.resetData_defineWordClusterMap())
+		self.TaskStack.push(lambda: self.resetData_definemergeCostReductions(), 'definemergeCostReductions', '')
+		self.TaskStack.push(lambda: self.resetData_defineClusterCostTable(), 'defineClusterCostTable', '')
+		self.TaskStack.push(lambda: self.resetData_defineClusterCounts(), 'defineClusterCounts', '')
+		self.TaskStack.push(lambda: self.resetData_defineClusterSequence(), 'defineClusterSequence', '')
+		self.TaskStack.push(lambda: self.resetData_defineWordClusterMap(), 'defineWordClusterMap', '')
 
 		# Clear The Tasks
-		self.taskStack_clearTaskStack()
-
-	def taskStack_performSingleTask(self, f):
-		# TODO: Print out what it's doing.
-		return f() #in case f() returns something
-
-	# Returns: 	True if there are tasks left to perform. 
-	#			False if there are no tasks left to perform.
-	def taskStack_performNextTask(self):
-		if len(self.TaskStack) == 0:
-			if self.verbose:
-				print 'No Tasks Remain in TaskStack.'
-			return False
-		else:
-			fn = self.TaskStack.pop()
-			if self.verbose:
-				print 'Performing next task from TaskStack: '
-			self.taskStack_performSingleTask(fn)
-			return True
-
-	def taskStack_clearTaskStack(self):
-		if self.verbose:
-			print 'Clearing TaskStack...'
-		while self.taskStack_performNextTask():
-			pass
+		self.TaskStack.clear()
 
 	def resetData_defineWordClusterMap(self, numInitialClusters=None):
-		if self.verbose:
-			print '...Defining Word-to-Cluster Mapping...'
+		log.info('...Defining Word-to-Cluster Mapping...')
 		start = timer()
 		self.sortedWords = [x[0] for x in Counter(self.wordSequence).most_common()]
 		if numInitialClusters is None:
@@ -121,11 +94,10 @@ class BrownClusterModel:
 			raise NotImplementedError('Have not implemented non-used clusters yet.')
 			self.wordClusterMapping = dict(zip(self.sortedWords[0:numInitialClusters],range(0,numInitialClusters)))
 		end = timer()
-		if self.verbose:
-			print "Defined Word Cluster Map for {0} words.".format(self.sequenceLength)
-			print "\t{0} words found.".format(len(self.sortedWords))
-			print "\t{0} clusters created.".format(len(self.wordClusterMapping))
-			self.printTimeElapsed(start, end)
+		log.info('Defined Word Cluster Map for %d words.', self.sequenceLength)
+		log.info('\t%d words found.', len(self.sortedWords))
+		log.info('\t%d clusters created.', len(self.wordClusterMapping))
+		self.printTimeElapsed(start, end)
 
 	def clusterCount_getBigramCount(self, cluster1, cluster2):
 		return self.clusterNGramCounts[1].get((cluster1, cluster2), 0.0)
@@ -134,22 +106,20 @@ class BrownClusterModel:
 		return self.clusterNGramCounts[0][cluster1] # Throw an error if not found
 
 	def resetData_defineClusterCounts(self):
-		if self.verbose:	
-			print '...Counting Cluster Unigrams and Bigrams from Cluster Sequence...'	
+		log.info('...Counting Cluster NGrams from Cluster Sequence...')
 		start = timer()
 		self.clusterNGramCounts = self.resetData_defineClusterCounts_generic(self.clusterSequence, )
 		self.clusters = self.clusterNGramCounts[0].keys()
 		self.originalClusters = copy(self.clusters)
 		end = timer()
-		if self.verbose:
-			print "Found cluster sequence for {0} words.".format(self.sequenceLength)
-			print "\t{0} clusters were found.".format(len(self.clusterNGramCounts[0]))
-			print "\t{0} bigrams were found.".format(len(self.clusterNGramCounts[1]))
-			if self.NO_CLUSTER_SYMBOL in self.clusterNGramCounts[0]:
-				print "\tUnclustered words remain in the dataset."
-			else:
-				print "\tNo unclustered words remain in the dataset."
-			self.printTimeElapsed(start, end)
+		log.info('Found cluster sequence for %d words.', self.sequenceLength)
+		log.info('\t%d clusters were found.', len(self.clusterNGramCounts[0]))
+		log.info('\t%d bigrams were found.', len(self.clusterNGramCounts[1]))
+		if self.NO_CLUSTER_SYMBOL in self.clusterNGramCounts[0]:
+			log.info('\tUnclustered words remain in the dataset.')
+		else:
+			log.info('\tNo unclustered words remain in the dataset.')
+		self.printTimeElapsed(start, end)
 
 	def resetData_defineClusterCounts_generic(self, clusterSequence):
 		# clusterSequence = [self.START_CLUSTER_SYMBOL] + clusterSequence
@@ -167,14 +137,12 @@ class BrownClusterModel:
 		return clusterNGramCounts
 
 	def resetData_defineClusterSequence(self):
-		if self.verbose:	
-			print '...Creating Cluster Sequence from Word-to-Cluster Mapping and Word Sequence...'
+		log.info('...Creating Cluster Sequence from Word-to-Cluster Mapping and Word Sequence...')
 		start = timer()
 		self.clusterSequence = self.resetData_defineClusterSequence_generic(self.wordSequence, )
 		end = timer()
-		if self.verbose:
-			print "Found cluster sequence for {0} words.".format(sequenceLength)
-			self.printTimeElapsed(start, end)
+		log.info('Found cluster sequence for %d words.', self.sequenceLength)			
+		self.printTimeElapsed(start, end)
 
 	def resetData_defineClusterSequence_generic(self, wordSequence):
 		sequenceLength = len(wordSequence)
@@ -184,8 +152,7 @@ class BrownClusterModel:
 		return clusterSequence
 
 	def resetData_defineClusterCostTable(self):
-		if self.verbose:	
-			print '...Creating Cluster Cost Table (Finding Bigram Graph Edge Costs)...'		
+		log.info('...Creating Cluster Cost Table (Finding Bigram Graph Edge Costs)...')
 		start = timer()
 		numClusters = len(self.clusters)
 		for i in range(numClusters):
@@ -196,9 +163,8 @@ class BrownClusterModel:
 				cost = self.clusterCost_findSingleClusterPairCost(c1, c2, cnt_c1=cnt_c1)
 				self.clusterCostTable[(c1,c2)] = cost
 		end = timer()
-		if self.verbose:
-			print "Defined Cluster Cost Table."
-			self.printTimeElapsed(start, end)
+		log.info('Defined Cluster Cost Table.')
+		self.printTimeElapsed(start, end)
 
 	def clusterCost_findSingleClusterPairCost(self, c1, c2, cnt_c1=None, cnt_c2=None):
 		if cnt_c1 is None : cnt_c1 = self.clusterCount_getClusterCount(c1)
@@ -227,7 +193,7 @@ class BrownClusterModel:
 			# Sample probability? or Population probability? Population.
 			# n = sequenceLength - 1 # Sample probability
 			n = self.sequenceLength # Population probability
-			return bigramCount/n * log(n*bigramCount/unigram1Count/unigram2Count, 2)
+			return bigramCount/n * lgrthm(n*bigramCount/unigram1Count/unigram2Count, 2)
 		else:
 			if unigram1Count == 0 or unigram2Count == 0:
 				raise Exception('Erroneous clusters')
