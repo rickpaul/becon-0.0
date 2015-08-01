@@ -28,7 +28,7 @@ def getNewBCM_Tiled(description=None, array1=[0,1], array2=[2,3]):
 		description = description
 	return getNewBCM(tileArray, description)
 
-def getCorrelatedReturnObject(numAssets=3, stringLength=4000):
+def getSampleCorrelatedReturns(numAssets=3, stringLength=4000):
 	TDG = CorrelatedReturnHistoryGenerator(numAssets=numAssets, stringLength=stringLength)
 	return TDG.history
 
@@ -44,7 +44,7 @@ def getNewBCM(data, description=None):
 def testEdgeCost(BCM,expectedTotalEdgeCost=2.0):
 	global verbose
 	global testNum
-	BCM.defineClusterCostTable()
+	BCM.resetData_defineClusterCostTable()
 
 	totalEdgeCost = sum(BCM.clusterCostTable.values())
 
@@ -64,11 +64,11 @@ def testMergeReductionCost(word1=(0,), word2=(1,), expectedMergeReductionCost=1.
 	global verbose
 	global testNum
 	
-	BCM.defineClusterMergeCostReductionTable()
+	BCM.resetData_definemergeCostReductions()
 	cluster1 = BCM.wordClusterMapping[word1]
 	cluster2 = BCM.wordClusterMapping[word2]
-	bigramTuple = BCM.getClusterCostBigram(cluster1, cluster2)
-	mergeReductionCost = BCM.clusterMergeCostReductionTable[bigramTuple]
+	bigramTuple = BCM.clusterCost_getClusterCostBigram(cluster1, cluster2)
+	mergeReductionCost = BCM.mergeCostReductions[bigramTuple]
 	if compareFloatValues(mergeReductionCost, expectedMergeReductionCost, numDigits=2):
 		print 'Test {0} OK'.format(testNum)
 		if verbose:
@@ -88,9 +88,9 @@ def testMergeCostReductionTableNaive(BCM):
 
 	currentGraphCost = BCM.findTotalClusteringCost()
 	allOK = True
-	for potentialMerge, costReduction in BCM.clusterMergeCostReductionTable.iteritems():
+	for potentialMerge, costReduction in BCM.mergeCostReductions.iteritems():
 		(c1, c2) = potentialMerge
-		BCM2 = copy.deepcopy(BCM)
+		BCM2 = deepcopy(BCM)
 		BCM2.mergeClusters_changeNGramCounts(c1, c2)
 		newGraphCost = BCM2.findTotalClusteringCost()
 		calculatedCostReduction = newGraphCost-currentGraphCost
@@ -134,15 +134,14 @@ def drawClusterSequence(BCM, subplot, startSequence, endSequence, differencePeri
 		))
 
 if __name__ == '__main__':
-	# testMergeReductionCostModification()
 	global verbose
 	global testNum
 	verbose = False
 	testNum = 1
 
-	doVisualTests = 1
-	doMergeCostReductionTests = 0
-	doSimpleTests = 0
+	doVisualTests = 0
+	doMergeCostReductionTests = 1
+	doEdgeCostTests = 1
 
 
 	if doVisualTests:
@@ -156,8 +155,8 @@ if __name__ == '__main__':
 		startD = startH + differencePeriod
 		endD = endH
 
-		TDG = getCorrelatedReturnObject(numAssets=numAssets, stringLength=stringLength)
-		diff = getFirstOrderDifferenceWords(TDG, periodLength=differencePeriod)[startD:endD]
+		dataSeries = getSampleCorrelatedReturns(numAssets=numAssets, stringLength=stringLength)
+		diff = getFirstOrderDifferenceWords(dataSeries, periodLength=differencePeriod)[startD:endD]
 		BCM = getNewBCM(diff)
 		BCM.toggleVerbosity(True)
 		numClusters = len(BCM.clusters)
@@ -181,7 +180,7 @@ if __name__ == '__main__':
 					plt.plot(x_Diff,diff[:,asset])
 				drawClusterSequence(BCM, subplot, startD-differencePeriod, endD-differencePeriod, differencePeriod, colors) #hacky.
 				plt.show()
-				moreToMerge = BCM.mergeTopClusters(updateClusterSequence=True)
+				moreToMerge = BCM.mergeClusters_mergeTop(updateClusterSequence=True)
 			BCM.performClustering_convertMergeHistoryToBinaryWords()
 			BCM.performClustering_findInterClusterDistances()
 			BCM.performClustering_establishDistanceMeasure()				
@@ -190,12 +189,15 @@ if __name__ == '__main__':
 		# BCM.performClustering_writeJSONToFile()
 
 	if doMergeCostReductionTests:
+		array1 = [0,1]
+		array2 = [2,3] 
+		BCM = getNewBCM_Tiled(None, array1=array1, array2=array2)		
 		leftToMerge=True
 		while leftToMerge:
 			testMergeCostReductionTableNaive(BCM)
-			leftToMerge = BCM.mergeTopClusters()
+			leftToMerge = BCM.mergeClusters_mergeTop()
 	
-	if doSimpleTests:
+	if doEdgeCostTests:
 		array1 = [1,1]
 		array2 = [1,1] 
 		BCM = getNewBCM_Tiled(None, array1=array1, array2=array2)
