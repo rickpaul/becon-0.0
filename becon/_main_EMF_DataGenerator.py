@@ -165,7 +165,7 @@ def generateWords_FirstOrderDiff_SingleTicker(ticker):
 		
 		dg_handle.findAndStoreWordSeries(wordTicker, wordSubType, wordType, wordSuperType)
 
-		firstOrderDiffData = EM_DGUtil.findFirstOrderDifferences(dataSeries)
+		firstOrderDiffData = EM_DGUtil.findFirstOrderDifferences(dataSeries, periodLength)
 
 		dates = []
 		values = []

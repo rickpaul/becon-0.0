@@ -7,7 +7,7 @@ import EMF_DatabaseHelper as EM_DBHelp
 
 firstOrderDiffPeriodOverride = []
 
-def findFirstOrderDifferences(data):
+def findFirstOrderDifferences(data, periodLength):
 	firstOrderDiffData = data[periodLength:] - data[:-periodLength]
 	return findNormalDistRange(firstOrderDiffData)
 
