@@ -36,7 +36,10 @@ def performInitialSetup(DBFilePath=None, fileFormat='rickshawJSON'):
 	db_conn = sq.connect(DBFilePath)
 	db_curs = db_conn.cursor()
 	log.info('Database opened successfully')
-	
+
+def finalize():
+	db_conn.close()
+
 def convertDataHistoryToJSON(ticker, dataSeriesID=None):
 	global file_format
 
@@ -178,8 +181,8 @@ def generateWords_TimeToSincePeakTrough():
 	tickers = ['USRECM', 'USARECM']
 
 def generateWords_TimeToSincePeakTrough_SingleTicker(ticker):
-	wordType = EM_util.wordTypes['timeToRecession']
-	wordSuperType = EM_util.wordSuperTypes['recessionSignal']
+	wordType = EM_util.wordTypes['TimeToRecession']
+	wordSuperType = EM_util.wordSuperTypes['RecessionSignal']
 	wordSubType = 1
 	wordTicker = 'TimeToRecession|' + ticker
 
@@ -212,10 +215,6 @@ def generateWords_TimeToSincePeakTrough_SingleTicker(ticker):
 			value = j
 
 	dg_handle.resetWordSeries()
-
-
-def finalize():
-	db_conn.close()
 
 if __name__ == '__main__':
 	try:
