@@ -10,22 +10,14 @@ from collections import Counter
 from operator import itemgetter
 
 from cluster_util import TaskStack
+from cluster_util import SymmetricTable_FixedSize
+from cluster_util import SymmetricTable_Sparse
 
-import json
 # import scipy.optimize.minimize as minimize
 # import scipy.optimize.OptimizeResult as minResult
 
 # See http://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
 # See http://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.optimize.OptimizeResult.html#scipy.optimize.OptimizeResult
-
-class DataCompatabilityError(Exception):
-	# TODO: Why isn't this displaying correctly?
-	def __init__(self, variableName, variableLength, expectedVariableLength):
-		self.variableName = variableName
-		self.variableLength = variableLength
-		self.expectedVariableLength = expectedVariableLength
-	def __str__(self):
-		print variableName + ' expected dimension ' + str(expectedVariableLength) + ', found ' + str(variableLength)
 
 class BrownClusterModel:
 
@@ -45,7 +37,7 @@ class BrownClusterModel:
 		if not hasattr(self, 'wordDataWidth'):
 			self.wordDataWidth = wordDataWidth
 		if wordDataWidth != self.wordDataWidth:
-			raise DataCompatabilityError('wordDataWidth', wordDataWidth, self.wordDataWidth)
+			raise Exception('New words not of same length as old words')
 		log.debug('Adding new word sequence of length %d...', wordDataLength)
 		# Add Data. Simple Concatenation
 		self.wordSequence = self.wordSequence + self.__addTrainingData_tuplefyWordSequence(wordSequence)
@@ -68,9 +60,10 @@ class BrownClusterModel:
 		self.wordClusterMapping = {}
 		self.clusterSequence = []
 		self.clusters = []
-		self.clusterNGramCounts = {}
+		self.clusterUnigramCounts = {} 
+		self.clusterBigramCounts = None
 		self.clusterCostTable = {}
-		self.mergeCostReductions = {} 
+		self.mergeCostReductions = None
 		self.mergeHistory = []
 		self.binaryRepresentation = {}
 		self.interClusterDistance = {}
@@ -97,38 +90,34 @@ class BrownClusterModel:
 		log.debug('%d clusters created.', len(self.wordClusterMapping))
 
 	def clusterCount_getBigramCount(self, cluster1, cluster2):
-		return self.clusterNGramCounts[1].get((cluster1, cluster2), 0.0)
+		return self.clusterBigramCounts.get(cluster1, cluster2, 0.0)
 
 	def clusterCount_getClusterCount(self, cluster1):
-		return self.clusterNGramCounts[0][cluster1] # Throw an error if not found
+		return self.clusterUnigramCounts[cluster1] # Throw an error if not found
 
 	def resetData_defineClusterCounts(self):
-		self.clusterNGramCounts = self.resetData_defineClusterCounts_generic(self.clusterSequence)
-		self.clusters = self.clusterNGramCounts[0].keys()
+		# clusterSequence = [self.START_CLUSTER_SYMBOL] + clusterSequence
+		sequenceLength = len(self.clusterSequence)
+		self.clusterUnigramCounts = {}
+		self.clusterBigramCounts = SymmetricTable_Sparse(orderMatters=True)
+		current = self.clusterSequence[0]
+		self.clusterUnigramCounts[current] = 1.0
+		for i in range(1,sequenceLength):
+			previous = current
+			current = self.clusterSequence[i]
+			self.clusterUnigramCounts[current] = self.clusterUnigramCounts.get(current, 0.0) + 1.0
+			self.clusterBigramCounts.set(current, previous, self.clusterBigramCounts.get(current, previous, 0.0) + 1.0)
+			#CONSIDER: Does the concept of discounted probabilities mean anything here?
+		self.clusters = self.clusterUnigramCounts.keys()
 		self.originalClusters = copy(self.clusters)
-		end = timer()
+
 		log.debug('Found cluster sequence for %d words.', self.sequenceLength)
-		log.debug('%d clusters were found.', len(self.clusterNGramCounts[0]))
-		log.debug('%d bigrams were found.', len(self.clusterNGramCounts[1]))
-		if self.NO_CLUSTER_SYMBOL in self.clusterNGramCounts[0]:
+		log.debug('%d clusters were found.', len(self.clusterUnigramCounts))
+		log.debug('%d bigrams were found.', len(self.clusterBigramCounts))
+		if self.NO_CLUSTER_SYMBOL in self.clusterUnigramCounts:
 			log.debug('Unclustered words remain in the dataset.')
 		else:
 			log.debug('No unclustered words remain in the dataset.')
-
-	def resetData_defineClusterCounts_generic(self, clusterSequence):
-		# clusterSequence = [self.START_CLUSTER_SYMBOL] + clusterSequence
-		sequenceLength = len(clusterSequence)
-		clusterNGramCounts = {}
-		clusterNGramCounts[0] = {}
-		clusterNGramCounts[1] = {}
-		clusterNGramCounts[0][clusterSequence[0]] = 1.0
-		for i in range(1,sequenceLength):
-			cluster = clusterSequence[i]
-			bigram = (clusterSequence[i-1], cluster)
-			clusterNGramCounts[0][cluster] = clusterNGramCounts[0].get(cluster, 0.0) + 1.0
-			clusterNGramCounts[1][bigram] = clusterNGramCounts[1].get(bigram, 0.0) + 1.0
-			#CONSIDER: Does the concept of discounted probabilities mean anything here?
-		return clusterNGramCounts
 
 	def resetData_defineClusterSequence(self):
 		self.clusterSequence = self.resetData_defineClusterSequence_generic(self.wordSequence, )
@@ -266,6 +255,7 @@ class BrownClusterModel:
 		return (clusterCostAddition - clusterCostReduction)
 
 	def resetData_definemergeCostReductions(self):
+		self.mergeCostReductions = SymmetricTable_Sparse(orderMatters=False)
 		clusters = self.clusters
 		numClusters = len(self.clusters)
 		for i in range(numClusters):
@@ -273,8 +263,7 @@ class BrownClusterModel:
 			for j in range(i):
 				c2 = self.clusters[j]
 				mergeCost = self.mergeCost_SinglePair(c1, c2)
-				self.mergeCostReductions[self.clusterCost_getClusterCostBigram(c1, c2)] = mergeCost
-		end = timer()
+				self.mergeCostReductions.set(c1, c2, mergeCost)
 
 	def mergeClusters_findMergeClusters(self):
 		if len(self.mergeCostReductions) == 0: # Necessary?
@@ -284,29 +273,22 @@ class BrownClusterModel:
 	# Change NGram Counts 
 	# Remove BigramCount(1,2) and return value
 	def mergeClusters_removeBigramCount(self, c1, c2):
-		if (c1, c2) in self.clusterNGramCounts[1]:
-			count = self.clusterNGramCounts[1][(c1, c2)]
-			del self.clusterNGramCounts[1][(c1, c2)]
-			return count
-		else:
-			return 0
+		return self.clusterBigramCounts.delete(c1, c2, 0)
 
 	# Change NGram Counts 
 	# Add count to BigramCount(1,2) (create if it doesn't exist)
 	def mergeClusters_contributeBigramCount(self, c1, c2, addCount):
-		if (c1, c2) in self.clusterNGramCounts[1]:
-			self.clusterNGramCounts[1][(c1, c2)] += addCount
-		else:
-			self.clusterNGramCounts[1][(c1, c2)] = addCount
+		newValue = self.clusterBigramCounts.get(c1, c2, 0) + addCount
+		self.clusterBigramCounts.set(c1, c2, newValue)
 
 	# Change NGram Counts from merging 1 into 2 
 	# We're deleting 2
 	def mergeClusters_changeNGramCounts(self, mc1, mc2):
 		# Change Unigram Counts
-		self.clusterNGramCounts[0][mc1] += self.clusterCount_getClusterCount(mc2)
-		del self.clusterNGramCounts[0][mc2]
+		self.clusterUnigramCounts[mc1] += self.clusterCount_getClusterCount(mc2)
+		del self.clusterUnigramCounts[mc2]
 		# Change Unigram Counts / Reset Saved Cluster Keys
-		self.clusters = self.clusterNGramCounts[0].keys()
+		self.clusters = self.clusterUnigramCounts.keys()
 		# Change Bigram Counts / Change Non-Merging Clusters
 		for c3 in self.clusters:
 			if c3 == mc1 or c3 == mc2:
@@ -347,7 +329,7 @@ class BrownClusterModel:
 			return False
 		(c1, c2) = mergeClusters
 		if verbose: #TODO: Remove
-			cost = self.mergeCostReductions[self.clusterCost_getClusterCostBigram(c1, c2)]
+			cost = self.mergeCostReductions.get(c1, c2)
 			print 'Merging Cluster {1} into Cluster {0}, with clusterCostReduction={2}'.format(c1, c2, cost)
 		# 2) Change Merge Cost Reduction using OLD Ngram Counts 
 		self.mergeClusters_changeMergeCostReductions_UnmergedClusters(c1, c2)
@@ -376,14 +358,14 @@ class BrownClusterModel:
 				continue
 			else:
 				newMergeCostReduction = self.mergeCost_SinglePair(mc1, c3)
-				self.mergeCostReductions[self.clusterCost_getClusterCostBigram(mc1, c3)] = newMergeCostReduction
+				self.mergeCostReductions.set(mc1, c3, newMergeCostReduction)
 
 	def mergeClusters_changeMergeCostReductions_RemoveDeletedCluster(self, mc2):
 		for c3 in self.clusters:
 			if c3 == mc2:
 				continue
 			else:
-				del self.mergeCostReductions[self.clusterCost_getClusterCostBigram(mc2, c3)]
+				self.mergeCostReductions.delete(mc2, c3, silent=False) #Test. I think I want silent
 
 	# This updates the mergeCostReductions after mergeCluster1 and mergeCluster2 are merged.
 	# This relies on OLD (i.e. pre-merge) NGram Counts
@@ -413,7 +395,7 @@ class BrownClusterModel:
 				mergeCostReduction += self.mutualInfo_PairVersusAnother(c3, c4, mc1, cnt_c3, cnt_c4, cnt_mc1) # mc1<->(c3+c4)
 				mergeCostReduction += self.mutualInfo_PairVersusAnother(c3, c4, mc2, cnt_c3, cnt_c4, cnt_mc2) # mc2<->(c3+c4)
 				mergeCostChange = (mergeCostAddition - mergeCostReduction)
-				self.mergeCostReductions[self.clusterCost_getClusterCostBigram(c3, c4)] += mergeCostChange
+				self.mergeCostReductions.set(c3, c4, self.mergeCostReductions.get(c3, c4) + mergeCostChange) #Do we want the 'get' to return 0?
 
 	def performClustering_convertMergeHistoryToBinaryWords(self):
 		self.binaryRepresentation = dict.fromkeys(self.originalClusters, '')
@@ -425,55 +407,27 @@ class BrownClusterModel:
 			maxDepth = max(maxDepth,len(binRep))
 		self.binaryRepresentationMaxLen = maxDepth
 
-
 	def performClustering_convertMergeHistoryToDictionary(self):
 		clusterWordMapping = dict(zip(self.wordClusterMapping.values(),self.wordClusterMapping.keys()))
 		d = {}
 		for (mc1, mc2) in self.mergeHistory:
 			leftNode = d.get(mc1, (mc1, clusterWordMapping[mc1]))
 			rightNode = d.get(mc2, (mc2, clusterWordMapping[mc2]))
-			d[mc1] = {'l':leftNode,'r':rightNode}
+			d[mc1] = {-2:leftNode,-1:rightNode}
 		self.dictionaryRepresentation = {'root': d[mc1]}
-
-	# Convert History to D3-readable JSON Representation
-	def performClustering_convertMergeHistoryToJSON_Recursive(self, node=None, depth=0):
-		if 'l' in node:
-			leftNode = self.performClustering_convertMergeHistoryToJSON_Recursive(node=node['l'], depth=depth+1)
-			rightNode = self.performClustering_convertMergeHistoryToJSON_Recursive(node=node['r'], depth=depth+1)
-			return {"name": "internal", "children": [leftNode, rightNode]}
-		else:
-			return {"name": str(node), "size":1}
-
-	def performClustering_convertMergeHistoryToJSON(self, prettyPrint=False):
-		if not hasattr(self, 'dictionaryRepresentation'): #slopy
-			self.performClustering_convertMergeHistoryToDictionary() #sloppy.
-		rootNode = self.dictionaryRepresentation['root']
-		d = self.performClustering_convertMergeHistoryToJSON_Recursive(rootNode)
-		if prettyPrint:
-			jsonarray = json.dumps(d, sort_keys=True, indent=4, separators=(',', ': '))
-		else:
-			jsonarray = json.dumps(d)
-		self.JSONRepresentation = jsonarray
-
-	# Sloppy. Should Move Out
-	def performClustering_writeJSONToFile(self, fileName='brownianCluster.json'):
-		if not hasattr(self, 'JSONRepresentation'): #slopy
-			self.performClustering_convertMergeHistoryToJSON() #sloppy.
-		writer = open(fileName, 'wb')
-		writer.write(self.JSONRepresentation)
-		writer.close()
 
 	def performClustering_findInterClusterDistances(self):
 		if len(self.binaryRepresentation) == 0: #sloppy.
 			self.performClustering_convertMergeHistoryToBinaryWords() #sloppy. Use task stack instead.
-		self.interClusterDistance = {}
 		numClusters = len(self.originalClusters)
+		self.interClusterDistance = SymmetricTable_FixedSize(numClusters, includeDiagonal=False)
 		for i in range(numClusters):
-			for j in range(i):
-				matchLength = self.performClustering_findInterClusterDistances_stringMatchLength(self.binaryRepresentation[i],self.binaryRepresentation[j])
-				self.interClusterDistance[(i,j)] = self.binaryRepresentationMaxLen - matchLength
+			binRep_i = self.binaryRepresentation[i]
+			for j in range(i+1,numClusters):
+				matchLength = self.performClustering_findInterClusterDistances_stringMatchLength(binRep_i, self.binaryRepresentation[j])
+				self.interClusterDistance.set(i, j, self.binaryRepresentationMaxLen - matchLength)
 
-	# Consider: could be done more efficiently (i.e. don't use strings)
+	# Consider: could be done more efficiently? (i.e. don't use strings)
 	def performClustering_findInterClusterDistances_stringMatchLength(self, string1, string2):
 		length = 0
 		for i in range(min(len(string1), len(string2))):
@@ -482,60 +436,22 @@ class BrownClusterModel:
 			length += 1
 		return length
 
-	def performClustering_findDistanceTableEntry(self, coord1, coord2, sequenceLength=None):
-		sequenceLength = self.sequenceLength if sequenceLength is None else sequenceLength
-		# This is upper right triangle coordinates
-		# That means Row, then Column. So if coord1 is 0, it is The First Row. 
-		if coord1 == coord2:
-			raise Exception("Distance from coordinate to self is 0.")
-		# Swap Coord1 and Coord2 if necessary
-		if coord1 > coord2:
-			temp = coord2
-			coord2 = coord1
-			coord1 = temp
-		# Calculate table distance as if table were whole.
-		tableEntry = coord1*sequenceLength + coord2
-		# Subtract lower left triangle
-		tableEntry -= ((coord1+1)*(coord1+2)/2)
-		return tableEntry
-
-	# TODO: Organize this better
-	def performClustering_printDistanceTable(self, displayCount=10):
-		if displayCount > self.sequenceLength:
-			raise Exception('Attempting to print more than table contains.')
-		for row in range(displayCount):
-			blankEntries = ['x']*(row+1)
-			rowEntries = []
-			for col in range(row+1,displayCount):
-				rowEntries.append(self.distanceTable[self.performClustering_findDistanceTableEntry(row, col)])
-			print '\t'.join(map(str,blankEntries)),
-			print '\t',
-			print '\t'.join(map(str,rowEntries))
-
-	def getinterClusterDistanceBigram(self, c1, c2):
-		# Assumes one of the two is in the table...
-		return (c1, c2) if (c1, c2) in self.interClusterDistance else (c2, c1)
-
-	def getinterClusterDistance(self, c1, c2):
-		return self.interClusterDistance[self.getinterClusterDistanceBigram(c1, c2)]
-
-	# This could be done *WAY* more efficiently
+	# TODO: Can this be done more efficiently?
 	def performClustering_establishDistanceMeasure(self): 
 		if hasattr(self, 'originalClusterSequence'): #sloppy
 			seq = self.originalClusterSequence #sloppy
 		else: #sloppy
 			seq = self.clusterSequence #sloppy
-		distanceTableSize = (self.sequenceLength * (self.sequenceLength-1))/2
-		self.distanceTable = np.empty(distanceTableSize) #careful. This could blow up
-		for i in range(self.sequenceLength):
+		sequenceLength = len(seq)
+		self.distanceTable = SymmetricTable_FixedSize(sequenceLength, includeDiagonal=False)
+		for i in range(sequenceLength):
 			c1 = seq[i]
-			for j in range(i+1,self.sequenceLength):
+			for j in range(i+1,sequenceLength):
 				c2 = seq[j]
-				entry = self.performClustering_findDistanceTableEntry(i,j)
 				if c1 == c2:
-					self.distanceTable[entry] = 0
-				else:	
-					self.distanceTable[entry] = self.getinterClusterDistance(c1,c2)
+					self.distanceTable.set(i, j, 0)
+				else:
+					self.distanceTable.set(i, j, self.interClusterDistance.get(c1,c2))
 
 	def performBrownianClustering(self):
 		leftToMerge=True
@@ -544,7 +460,6 @@ class BrownClusterModel:
 		self.performClustering_convertMergeHistoryToBinaryWords()
 		self.performClustering_findInterClusterDistances()
 		self.performClustering_establishDistanceMeasure()
-
 
 	def mergeClusters_updateClusterSequence(self, mc1, mc2):
 		for i in range(self.sequenceLength):
