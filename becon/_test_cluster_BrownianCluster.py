@@ -2,7 +2,7 @@
 import numpy as np
 
 from cluster_BrownianCluster import BrownClusterModel
-from cluster_BrownianCluster_util import PyPlotDrawHandler_BCM
+from cluster_BrownianCluster_util import DrawHandler_BCM
 
 import test_util as testing
 
@@ -25,7 +25,7 @@ def __getNewBCM(data, description=None):
 	return BCM	
 
 def testEdgeCost(BCM,expectedTotalEdgeCost=2.0):
-	totalEdgeCost = sum(BCM.clusterCostTable.values())
+	totalEdgeCost = sum([v for i,v in BCM.clusterCostTable.iteritems()])
 	desc = 'Total cluster cost: BCM {0}'.format(BCM.description)
 	testing.floatComparisonTest(totalEdgeCost, expectedTotalEdgeCost, 'totalEdgeCost', 'expectedTotalEdgeCost', desc, numDigits=2)
 
@@ -44,7 +44,7 @@ def testMergeCostReductionTableNaive(BCM):
 		BCM2 = deepcopy(BCM)
 		BCM2.mergeClusters_changeNGramCounts(c1, c2)
 		newGraphCost = BCM2.findTotalClusteringCost()
-		calculatedCostReduction = newGraphCost -currentGraphCost
+		calculatedCostReduction = newGraphCost - currentGraphCost
 
 		desc = 'Potential MergeCostReduction for clusters {0} and {1}: BCM {2}'.format(c1, c2, BCM.description)
 		allOK = (allOK and 
