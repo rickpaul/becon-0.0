@@ -1,54 +1,32 @@
 from operator import itemgetter
 from cluster_util import SymmetricTable_Sparse, SymmetricTable_FixedSize
+import test_util as testing
 
 # TODO: look into unittest module
 def testSymmetricTableSparse():
 	# Test Order Matters
-	table = SymmetricTable_Sparse()
-	try:
-		table.get(1,2)
-		assert False, 'Should not get unset value.'
-	except KeyError:
-		assert True, 'Should not get unset value.'
-	assert table.get(1, 2, 'a') == 'a', 'Default value test passed.'
+	table = SymmetricTable_Sparse() #orderMatters=True
+	testing.tryExceptTest(lambda: table.get(1,2), 'Should not get unset value.', expectToFail=True, ErrorType=KeyError)
+	testing.simpleAssertionTest(lambda: table.get(1, 2, 'a') == 'a', 'Default return for Get test passed.')	
 
 	table.set(1,2,'a')
-	assert table.get(1, 2) == 'a', 'Get value test passed.'
-	try:
-		table.get(2, 1)
-		assert False, 'Should not get value in this order.'
-	except KeyError:
-		assert True, 'Should not get value in this order.'
+	testing.simpleAssertionTest(lambda: table.get(1, 2) == 'a', 'Get value test passed.')	
+	testing.tryExceptTest(lambda: table.get(2,1), 'Should not get values in reversed order.', expectToFail=True, ErrorType=KeyError)
 
-	assert table.delete(1,2) == 'a'
-	try:
-		table.delete(1,2)
-		assert False, 'Should get exception when deleting nonexistent value.'
-	except KeyError:
-		assert True, 'Should get exception when deleting nonexistent value.'
-	try:
-		table.delete(1,2,silent=True)
-		assert True, 'Should not get exception when deleting nonexistent value.'
-	except KeyError:
-		assert False, 'Should not get exception when deleting nonexistent value.'
-	assert table.delete(1,2,'a') == 'a', 'Default value deletion test passed.'
+	testing.simpleAssertionTest(lambda: table.delete(1,2) == 'a', 'Current value should return on deletion.')
+	testing.tryExceptTest(lambda: table.delete(2,1), 'Should get exception when deleting nonexistent value.', expectToFail=True, ErrorType=KeyError)
+	testing.tryExceptTest(lambda: table.delete(2,1,silent=True), 'Should not get exception when deleting nonexistent value silently.', expectToFail=False, ErrorType=Exception)
+	testing.simpleAssertionTest(lambda: table.delete(1,2), 'Current value should return on deletion.')
+	testing.simpleAssertionTest(lambda: table.delete(2,2,'a') == 'a', 'Default value should return on deletion of non-existent object.')
 
 	# Test Order Doesn't Matter
 	table = SymmetricTable_Sparse(orderMatters=False)
 	table.set(1,2,'a')
-	assert table.get(1, 2) == 'a', 'Get value test passed.'
-	assert table.get(2, 1) == 'a', 'Get value test passed.'
+	testing.simpleAssertionTest(lambda: table.get(1, 2) == 'a', 'Get value test passed.')
+	testing.simpleAssertionTest(lambda: table.get(2, 1) == 'a', 'Symmetric Get test passed.')
 	table.delete(2,1)
-	try:
-		table.get(2, 1)
-		assert False, 'Should not get value after deletion.'
-	except KeyError:
-		assert True, 'Should not get value after deletion.'
-	try:
-		table.get(1, 2)
-		assert False, 'Should not get value after deletion.'
-	except KeyError:
-		assert True, 'Should not get value after deletion.'
+	testing.tryExceptTest(lambda: table.get(2,1), 'Should not get value after deletion.', expectToFail=True, ErrorType=KeyError)
+	testing.tryExceptTest(lambda: table.get(1,2), 'Should not get value after deletion.', expectToFail=True, ErrorType=KeyError)
 
 	# Test Sorting
 	table = SymmetricTable_Sparse()
@@ -60,50 +38,46 @@ def testSymmetricTableSparse():
 	for a,b in y.iteritems():
 		table.set(a[0], a[1], b)
 
-	assert sorted(y.items(), key=itemgetter(1)) == sorted(table.items(), key=itemgetter(1))
+	lmbda = lambda: sorted(y.items(), key=itemgetter(1)) == sorted(table.items(), key=itemgetter(1))
+	testing.simpleAssertionTest(lmbda, 'table.items() works.')
 
 # TODO: Move to own module
 # TODO: look into unittest module
 def testSymmetricTableFixed():
 	tableSize = 10
+	
 	table = SymmetricTable_FixedSize(tableSize) #includeDiagonal=False
-	try:
-		table.get(1,2)
-		assert False, 'Should not get unset value.'
-	except KeyError:
-		assert True, 'Should not get unset value.'
-	assert table.get(1, 2, 'a') == 'a', 'Default value test passed.'
-
-	try:
-		table.set(2,2,'a')
-		assert False, 'Should not set diagonal value.'
-	except AssertionError:
-		assert True, 'Should not set unset value.'
+	testing.tryExceptTest(lambda: table.get(1,2), 'Should not get unset value.', expectToFail=True, ErrorType=KeyError)
+	testing.simpleAssertionTest(lambda: table.get(1, 2, 'a') == 'a', 'Default value test passed.')
+	testing.tryExceptTest(lambda: table.set(2,2,'a'), 'Should not set diagonal value.', expectToFail=True, ErrorType=AssertionError)
 
 	# Make sure table is filling in order
-	count = 1
+	count = 0
 	for row in range(tableSize):
 		for col in range(row+1, tableSize):
 			table.set(row, col, count)
 			count += 1
-	table.printTable()  #TODO: Make this into an actual test
+			testing.simpleAssertionTest(lambda: len(table) == count, "Table entry didn't overwrite.", throwawayTest=True) # shouldn't work if we accidentally overwrite
+	table.printTable()  # TODO: Make this into an actual test
+	testing.simpleAssertionTest(lambda: count == tableSize*(tableSize-1)/2, "Table entry didn't skip.") # shouldn't work if we accidentally skip an entry
 
 	table = SymmetricTable_FixedSize(tableSize, includeDiagonal=True)
+	testing.tryExceptTest(lambda: table.set(2,2,'a'), 'Should be able to set diagonal value.', expectToFail=True, ErrorType=AssertionError)
+	testing.simpleAssertionTest(lambda: table.delete(2,2) == 'a', 'Current value should return on deletion.')
+	testing.tryExceptTest(lambda: table.delete(2,2,silent=True), 'Should fail to delete silently.', expectToFail=False, ErrorType=KeyError)
+	testing.simpleAssertionTest(lambda: table.delete(2,2,'a') == 'a', 'Default value should return on deletion of non-existent object.')
 
-	try:
-		table.set(2,2,'a')
-		assert True, 'Should set diagonal value.'
-	except AssertionError:
-		assert False, 'Should be able to set value of diagonal'
-
-	count = 1
+	# Make sure table is filling in order
+	count = 0
 	for row in range(tableSize):
 		for col in range(row, tableSize):
 			table.set(row, col, count)
 			count += 1
-	table.printTable() #TODO: Make this into an actual test
-
+			testing.simpleAssertionTest(lambda: len(table) == count, "Table entry didn't overwrite.", throwawayTest=True) # shouldn't work if we accidentally overwrite
+	table.printTable() # TODO: Make this into an actual test
+	testing.simpleAssertionTest(lambda: count == tableSize*(tableSize+1)/2, "Table entry didn't skip.") # shouldn't work if we accidentally skip an entry
 
 if __name__ == '__main__':
+	testing.resetTestSuite()
 	testSymmetricTableFixed()
 	testSymmetricTableSparse()
