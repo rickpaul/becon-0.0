@@ -1,11 +1,10 @@
 #TODO: Worry about numeric precision in Rolling Window Stats
-
 import numpy as np
 from logging import info
 from math import ceil as ceil
 
 class CorrelatedReturnHistoryGenerator:
-	def __init__(self, numAssets=5, stringLength=480, addZeroPrefix=True):
+	def __init__(self, numAssets=5, dataLength=480, addZeroPrefix=True):
 		#assets return between 0% and 5% p.a.
 		returnRange = 1/20.0
 		minReturn = 0.0
@@ -26,22 +25,22 @@ class CorrelatedReturnHistoryGenerator:
 		self.covs = (std * std.T)	* correl
 
 		# Can do Cholesky decomposition method, or... (naive)
-		history = np.random.multivariate_normal(self.means, self.covs, size=stringLength)
-		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 2)
-		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 7)
-		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 13)
-		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 14) # Do one that correlates with previous, to mimic sudden correlated changes
-		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 91) # Do one that correlates with previous, to mimic sudden correlated changes
+		history = np.random.multivariate_normal(self.means, self.covs, size=dataLength)
+		history = history + self.__generateRandomMultivarateNormalTile(dataLength, 2)
+		history = history + self.__generateRandomMultivarateNormalTile(dataLength, 7)
+		history = history + self.__generateRandomMultivarateNormalTile(dataLength, 13)
+		history = history + self.__generateRandomMultivarateNormalTile(dataLength, 14) # Do one that correlates with previous, to mimic sudden correlated changes
+		history = history + self.__generateRandomMultivarateNormalTile(dataLength, 91) # Do one that correlates with previous, to mimic sudden correlated changes
 		history = history / 6.0 # because we add multiple histories together
 
-		self.history = np.cumsum(history[0:stringLength],0)
+		self.history = np.cumsum(history[0:dataLength],0)
 		if addZeroPrefix:
 			self.history = np.vstack((np.zeros(shape=(1,numAssets)),self.history))
 
 
-	def __generateRandomMultivarateNormalTile(self, stringLength, tileSize):
-		length = int(ceil(stringLength/(tileSize*1.0)))
-		excess = int(length * tileSize - stringLength)
+	def __generateRandomMultivarateNormalTile(self, dataLength, tileSize):
+		length = int(ceil(dataLength/(tileSize*1.0)))
+		excess = int(length * tileSize - dataLength)
 		if excess:
 			return np.repeat( np.random.multivariate_normal(self.means, self.covs,size=length) 
 							,tileSize,0)[:-excess] / (tileSize*1.0)
