@@ -1,4 +1,3 @@
-from operator import itemgetter #TODO: for tests, move out
 import logging as log
 from timeit import default_timer as timer
 
@@ -60,6 +59,20 @@ class SymmetricTable_FixedSize:
 	def set(self, coord1, coord2, value):
 		self.__table[self.__findTableEntry(coord1, coord2)] = value
 
+	def delete(self, coord1, coord2, *args, **kwargs):
+		entry = self.__findTableEntry(coord1, coord2)
+		if self.__table[entry] is not None:
+			value = self.__table[entry]
+			self.__table[entry] = None
+			return value
+		elif len(args):
+			return args[0]
+		else:
+			if kwargs.get('silent', 0):
+				return
+			else:
+				raise KeyError('Entry not found ({0}, {1})'.format(coord1, coord2))
+
 	def __findTableEntry(self, coord1, coord2):
 		# This is upper right triangle coordinates
 		# That means Row, then Column. So if coord1 is 0, it is The First Row. 
@@ -81,7 +94,7 @@ class SymmetricTable_FixedSize:
 		return tableEntry
 
 	def __len__(self):
-		return len(filter(None, self.__table))
+		return len(filter(lambda x: x is not None, self.__table))
 
 	def printTable(self, displayCount=None):
 		blankValue = 'x'
