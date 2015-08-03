@@ -1,3 +1,5 @@
+#TODO: Worry about numeric precision in Rolling Window Stats
+
 import numpy as np
 from logging import info
 from math import ceil as ceil
@@ -28,8 +30,8 @@ class CorrelatedReturnHistoryGenerator:
 		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 2)
 		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 7)
 		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 13)
-		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 14) # Do one that correlates with previous, to mimic sudden changes
-		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 91) # Do one that correlates with previous, to mimic sudden changes
+		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 14) # Do one that correlates with previous, to mimic sudden correlated changes
+		history = history + self.__generateRandomMultivarateNormalTile(stringLength, 91) # Do one that correlates with previous, to mimic sudden correlated changes
 		history = history / 6.0 # because we add multiple histories together
 
 		self.history = np.cumsum(history[0:stringLength],0)
@@ -49,7 +51,7 @@ class CorrelatedReturnHistoryGenerator:
 
 class SemiRandomSeedGenerator:
 	def __init__(self, seedOverride=None):
-		np.random.seed(seed=None)
+		np.random.seed(seed=None) # Set seed to system clock time
 		rnd_seed = (np.random.randint(9999) if seedOverride is None else seedOverride)
 		info('Generating Semi Random Numbers With Seed: ' + str(rnd_seed))
 		np.random.seed(seed=rnd_seed)
