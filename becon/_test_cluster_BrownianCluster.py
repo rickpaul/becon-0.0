@@ -1,23 +1,16 @@
-import pprint #TEST
-import colorsys
-
+# TODO: put in semi-random-seed
 import numpy as np
 
 from cluster_BrownianCluster import BrownClusterModel
-from stats_util import CorrelatedReturnHistoryGenerator
-from stats_util import CorrelatedReturnHistoryGenerator
-import EMF_DataGenerator_util as EM_DGUtil
+from cluster_BrownianCluster_util import PyPlotDrawHandler_BCM
+from test_util import compareFloatValues
 
-from matplotlib import pyplot as plt
-from matplotlib import patches as patches
 from copy import deepcopy
-
 
 global verbose
 global testNum
 
 def getNewBCM_Tiled(description=None, array1=[0,1], array2=[2,3]):
-	BCM = BrownClusterModel()
 	n = 1000
 	tileArray = np.reshape(np.tile(np.array(array1),n),(2*n,1))
 	tileArray = np.vstack((tileArray,np.reshape(np.tile(np.array(array2),n),(2*n,1))))
@@ -26,19 +19,12 @@ def getNewBCM_Tiled(description=None, array1=[0,1], array2=[2,3]):
 		description = ''.join(map(str,BCM.wordSequence[2*n-5:2*n+5]))
 	else:
 		description = description
-	return getNewBCM(tileArray, description)
+	return __getNewBCM(tileArray, description)
 
-def getSampleCorrelatedReturns(numAssets=3, stringLength=4000):
-	TDG = CorrelatedReturnHistoryGenerator(numAssets=numAssets, stringLength=stringLength)
-	return TDG.history
-
-def getFirstOrderDifferenceWords(dataSeries, periodLength=10):
-	return EM_DGUtil.findFirstOrderDifferences(dataSeries, periodLength)
-
-def getNewBCM(data, description=None):
+def __getNewBCM(data, description=None):
 	BCM = BrownClusterModel()
 	BCM.addTrainingData(data)
-	BCM.description = description
+	BCM.description = description # Defined Only Here... Kind of sloppy.
 	return BCM	
 
 def testEdgeCost(BCM,expectedTotalEdgeCost=2.0):
@@ -67,8 +53,7 @@ def testMergeReductionCost(word1=(0,), word2=(1,), expectedMergeReductionCost=1.
 	BCM.resetData_definemergeCostReductions()
 	cluster1 = BCM.wordClusterMapping[word1]
 	cluster2 = BCM.wordClusterMapping[word2]
-	bigramTuple = BCM.clusterCost_getClusterCostBigram(cluster1, cluster2)
-	mergeReductionCost = BCM.mergeCostReductions[bigramTuple]
+	mergeReductionCost = BCM.mergeCostReductions.get(cluster1, cluster2)
 	if compareFloatValues(mergeReductionCost, expectedMergeReductionCost, numDigits=2):
 		print 'Test {0} OK'.format(testNum)
 		if verbose:
@@ -107,86 +92,20 @@ def testMergeCostReductionTableNaive(BCM):
 		print 'Test {0} OK'.format(testNum)
 	testNum += 1
 
-def compareFloatValues(num1, num2, numDigits=6):
-	exp = 10**numDigits
-	return round(num1*exp)==round(num2*exp)
-
-def get_N_HexColors(N=5):
-	HSV_tuples = [(x*1.0/N, 0.5, 0.5) for x in xrange(N)]
-	hex_out = []
-	for rgb in HSV_tuples:
-		rgb = map(lambda x: int(x*255),colorsys.hsv_to_rgb(*rgb))
-		hexString = "".join(map(lambda x: chr(x).encode('hex'),rgb))
-		hex_out.append('#'+hexString)
-	return hex_out
-
-def drawClusterSequence(BCM, subplot, startSequence, endSequence, differencePeriod, colors):
-	lowY = -1.5
-	height = 3.0
-	width = 1.0#/BCM.sequenceLength
-	for i in range(startSequence, endSequence):
-		subplot.add_patch(
-			patches.Rectangle(
-				(i+differencePeriod, lowY), width, height,
-				alpha=0.5,
-				facecolor=colors[BCM.clusterSequence[i]],
-				edgecolor='none'
-		))
-
 if __name__ == '__main__':
+
 	global verbose
 	global testNum
 	verbose = False
 	testNum = 1
 
-	doVisualTests = 0
-	doMergeCostReductionTests = 1
-	doEdgeCostTests = 1
-
+	doVisualTests = 1
+	doMergeCostReductionTests = 0
+	doEdgeCostTests = 0
 
 	if doVisualTests:
-		doDisplay = 0
-		numAssets = 3
-		stringLength = 200
-		differencePeriod = 10
-		length = stringLength - differencePeriod
-		startH = 0 # start history
-		endH = startH + length + differencePeriod
-		startD = startH + differencePeriod
-		endD = endH
-
-		dataSeries = getSampleCorrelatedReturns(numAssets=numAssets, stringLength=stringLength)
-		diff = getFirstOrderDifferenceWords(dataSeries, periodLength=differencePeriod)[startD:endD]
-		BCM = getNewBCM(diff)
-		BCM.toggleVerbosity(True)
-		numClusters = len(BCM.clusters)
-		colors = get_N_HexColors(numClusters)		
-		if doDisplay:
-			moreToMerge = True
-			while moreToMerge:
-				# Display History
-				plt.figure(1)
-				plt.subplot(211)
-				plt.xlim(startH, endH)
-				x_History = range(startH, endH)
-				x_Diff = range(startD, endD)
-				for asset in range(numAssets):
-					plt.plot(x_History,history[startH:endH,asset])
-				# Display Clusters
-				subplot = plt.subplot(212)
-				plt.xlim(startH, endH)
-				plt.ylim(-1.5, 1.5)
-				for asset in range(numAssets):
-					plt.plot(x_Diff,diff[:,asset])
-				drawClusterSequence(BCM, subplot, startD-differencePeriod, endD-differencePeriod, differencePeriod, colors) #hacky.
-				plt.show()
-				moreToMerge = BCM.mergeClusters_mergeTop(updateClusterSequence=True)
-			BCM.performClustering_convertMergeHistoryToBinaryWords()
-			BCM.performClustering_findInterClusterDistances()
-			BCM.performClustering_establishDistanceMeasure()				
-		else:
-			BCM.performBrownianClustering()
-		# BCM.performClustering_writeJSONToFile()
+		drawer = PyPlotDrawHandler_BCM()
+		drawer.drawMergeSequenceUsingPyPlot()
 
 	if doMergeCostReductionTests:
 		array1 = [0,1]
