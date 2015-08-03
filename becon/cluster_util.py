@@ -37,6 +37,12 @@ class TaskStack:
 
 
 class SymmetricTable_FixedSize:
+	class EmptySlot:
+		def __init__(self):
+			pass
+		def __str__(self):
+			return ''
+
 	def __init__(self, tableLength, includeDiagonal=False):
 		self.tableLength = tableLength
 		self.includeDiagonal = includeDiagonal
@@ -44,11 +50,11 @@ class SymmetricTable_FixedSize:
 			tableLength = (tableLength * (tableLength+1))/2
 		else:
 			tableLength = (tableLength * (tableLength-1))/2
-		self.__table = [None]*tableLength
+		self.__table = [self.EmptySlot()]*tableLength
 
 	def get(self, coord1, coord2, *args):
 		value = self.__table[self.__findTableEntry(coord1, coord2)]
-		if value is None:
+		if value.__class__ is self.EmptySlot:
 			if len(args):
 				return args[0]
 			else:
@@ -61,9 +67,9 @@ class SymmetricTable_FixedSize:
 
 	def delete(self, coord1, coord2, *args, **kwargs):
 		entry = self.__findTableEntry(coord1, coord2)
-		if self.__table[entry] is not None:
+		if self.__table[entry].__class__ is not self.EmptySlot:
 			value = self.__table[entry]
-			self.__table[entry] = None
+			self.__table[entry] = self.EmptySlot()
 			return value
 		elif len(args):
 			return args[0]
@@ -94,7 +100,7 @@ class SymmetricTable_FixedSize:
 		return tableEntry
 
 	def __len__(self):
-		return len(filter(lambda x: x is not None, self.__table))
+		return len(self.items())
 
 	def printTable(self, displayCount=None):
 		blankValue = 'x'
@@ -114,6 +120,12 @@ class SymmetricTable_FixedSize:
 			if len(blankEntries):
 				print '\t',
 			print '\t'.join(map(str,rowEntries))
+
+	def items(self):
+		return filter(lambda x: x.__class__ != self.EmptySlot, self.__table)
+
+	def iteritems(self):
+		raise NotImplementedError
 
 # class BinaryTree:
 # 	raise NotImplementedError()
