@@ -3,74 +3,40 @@ import numpy as np
 
 from cluster_BrownianCluster import BrownClusterModel
 from cluster_BrownianCluster_util import PyPlotDrawHandler_BCM
-from test_util import compareFloatValues
+
+import test_util as testing
 
 from copy import deepcopy
 
-global verbose
-global testNum
 
 def getNewBCM_Tiled(description=None, array1=[0,1], array2=[2,3]):
 	n = 1000
 	tileArray = np.reshape(np.tile(np.array(array1),n),(2*n,1))
 	tileArray = np.vstack((tileArray,np.reshape(np.tile(np.array(array2),n),(2*n,1))))
-	
-	if description is None:
-		description = ''.join(map(str,BCM.wordSequence[2*n-5:2*n+5]))
-	else:
-		description = description
 	return __getNewBCM(tileArray, description)
 
 def __getNewBCM(data, description=None):
 	BCM = BrownClusterModel()
 	BCM.addTrainingData(data)
+	dataMidpoint = len(data)/2
+	if description is None:
+		description = ''.join(map(str,BCM.wordSequence[dataMidpoint-5:dataMidpoint+5]))
 	BCM.description = description # Defined Only Here... Kind of sloppy.
 	return BCM	
 
 def testEdgeCost(BCM,expectedTotalEdgeCost=2.0):
-	global verbose
-	global testNum
-	BCM.resetData_defineClusterCostTable()
-
 	totalEdgeCost = sum(BCM.clusterCostTable.values())
-
-	if compareFloatValues(totalEdgeCost, totalEdgeCost, numDigits=2):
-		print 'Test {0} OK'.format(testNum)
-		if verbose:
-			print '\tCode type {0} total cluster cost OK'.format(BCM.description)
-			print '\t(found cost of {0}, expected cost of {1})'.format(totalEdgeCost, expectedTotalEdgeCost)
-	else:
-		print 'Test {0} FAILED'.format(testNum)
-		if verbose:
-			print '\tCode type {0} total cluster cost FAILED'.format(BCM.description)
-			print '\t(found cost of {0}, expected cost of {1})'.format(totalEdgeCost, expectedTotalEdgeCost)
-	testNum += 1
+	desc = 'Total cluster cost: BCM {0}'.format(BCM.description)
+	testing.floatComparisonTest(totalEdgeCost, expectedTotalEdgeCost, 'totalEdgeCost', 'expectedTotalEdgeCost', desc, numDigits=2)
 
 def testMergeReductionCost(word1=(0,), word2=(1,), expectedMergeReductionCost=1.0):
-	global verbose
-	global testNum
-	
-	BCM.resetData_definemergeCostReductions()
 	cluster1 = BCM.wordClusterMapping[word1]
 	cluster2 = BCM.wordClusterMapping[word2]
 	mergeReductionCost = BCM.mergeCostReductions.get(cluster1, cluster2)
-	if compareFloatValues(mergeReductionCost, expectedMergeReductionCost, numDigits=2):
-		print 'Test {0} OK'.format(testNum)
-		if verbose:
-			print '\tCode type {2} merge reduction cost OK for words {0} and {1}'.format(word1, word2, BCM.description)
-			print '\t(found cost of {0}, expected cost of {1})'.format(mergeReductionCost, expectedMergeReductionCost)
-	else:
-		print 'Test {0} FAILED'.format(testNum)
-		if verbose:
-			print '\tCode type {2} merge reduction cost FAILED for words {0} and {1}'.format(word1, word2, BCM.description)
-			print '\t(found cost of {0}, expected cost of {1})'.format(mergeReductionCost, expectedMergeReductionCost)
-	testNum += 1
-
+	desc = 'Merge reduction cost for words {0} and {1}: BCM {2}'.format(word1, word2, BCM.description)
+	testing.floatComparisonTest(mergeReductionCost, expectedMergeReductionCost, 'mergeReductionCost', 'expectedMergeReductionCost', desc, numDigits=2)
 
 def testMergeCostReductionTableNaive(BCM):
-	global verbose
-	global testNum
-
 	currentGraphCost = BCM.findTotalClusteringCost()
 	allOK = True
 	for potentialMerge, costReduction in BCM.mergeCostReductions.iteritems():
@@ -78,30 +44,24 @@ def testMergeCostReductionTableNaive(BCM):
 		BCM2 = deepcopy(BCM)
 		BCM2.mergeClusters_changeNGramCounts(c1, c2)
 		newGraphCost = BCM2.findTotalClusteringCost()
-		calculatedCostReduction = newGraphCost-currentGraphCost
-		if  compareFloatValues(calculatedCostReduction, costReduction):
-			if verbose:
-				print 'OK on potentialMerge({0},{1})'.format(c1, c2)
-				print 'Expected costReduction={0}, calculatedCostReduction={1}'.format(costReduction,calculatedCostReduction)
-		else:
-			if verbose:
-				print 'FAILED on potentialMerge({0},{1})'.format(c1, c2)
-				print 'Expected costReduction={0}, calculatedCostReduction={1}'.format(costReduction,calculatedCostReduction)
-			allOK = False
+		calculatedCostReduction = newGraphCost -currentGraphCost
+
+		desc = 'Potential MergeCostReduction for clusters {0} and {1}: BCM {2}'.format(c1, c2, BCM.description)
+		allOK = (allOK and 
+			testing.floatComparisonTest(calculatedCostReduction, costReduction, 'calculatedCostReduction', 'costReduction', desc, throwawayTest=True)
+			)
 	if allOK:
-		print 'Test {0} OK'.format(testNum)
-	testNum += 1
+		testing.outputTestOK('All Merge Cost Reductions Worked as Expected')
+	else:
+		testing.outputTestFAILED('Not All Merge Cost Reductions Worked as Expected')
+
 
 if __name__ == '__main__':
+	testing.resetTestSuite()
 
-	global verbose
-	global testNum
-	verbose = False
-	testNum = 1
-
-	doVisualTests = 1
-	doMergeCostReductionTests = 0
-	doEdgeCostTests = 0
+	doVisualTests = 0
+	doMergeCostReductionTests = 1
+	doEdgeCostTests = 1
 
 	if doVisualTests:
 		drawer = PyPlotDrawHandler_BCM()
