@@ -63,7 +63,9 @@ def testSymmetricTableFixed():
 
 	table = SymmetricTable_FixedSize(tableSize, includeDiagonal=True)
 	testing.tryExceptTest(lambda: table.set(2,2,'a'), 'Should be able to set diagonal value.', expectToFail=True, ErrorType=AssertionError)
+	testing.simpleAssertionTest(lambda: len(table) == 1, 'Table length calculation working.')
 	testing.simpleAssertionTest(lambda: table.delete(2,2) == 'a', 'Current value should return on deletion.')
+	testing.simpleAssertionTest(lambda: len(table) == 0, 'Table length calculation working.')
 	testing.tryExceptTest(lambda: table.delete(2,2,silent=True), 'Should fail to delete silently.', expectToFail=False, ErrorType=KeyError)
 	testing.simpleAssertionTest(lambda: table.delete(2,2,'a') == 'a', 'Default value should return on deletion of non-existent object.')
 
@@ -79,5 +81,5 @@ def testSymmetricTableFixed():
 
 if __name__ == '__main__':
 	testing.resetTestSuite()
-	testSymmetricTableFixed()
 	testSymmetricTableSparse()
+	testSymmetricTableFixed()
