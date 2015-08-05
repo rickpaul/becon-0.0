@@ -1,0 +1,169 @@
+<!doctype HTML>
+<html>
+<head>
+	<meta charset='utf-8'>
+	<style>	
+		svg {
+			font: 10px sans-serif;
+		}
+
+		.area {
+			fill: steelblue;
+			opacity: 0.4;
+			filter: alpha(opacity=0.4); /* For IE8 and earlier */
+			clip-path: url(#clip);
+		}
+
+		.focus-line {
+			fill: none;
+			stroke: #000;
+			stroke-width: 1px;
+			clip-path: url(#clip);
+		}
+
+		.axis path,
+		.axis line {
+			fill: none;
+			stroke: #000;
+			shape-rendering: crispEdges;
+		}
+
+		.brush .extent {
+		stroke: #fff;
+		fill-opacity: .125;
+		shape-rendering: crispEdges;
+		}
+	</style>
+</head>
+<body>
+	<script src='/lib/d3.v3.min.js'> </script>
+	<script type='text/javascript'>
+		var svg_width = 960
+		var svg_height = 500;
+
+		// Focus is main graph (Above)
+		// Context is brush graph (Below)
+		var focus_margin = {top: 10, right: 10, bottom: 100, left: 40};
+		var context_margin = {top: 430, right: 10, bottom: 20, left: 40}; // TODO: Make margins change depending on svg_width/svg_height values
+		var graph_width = svg_width - focus_margin.left - focus_margin.right;
+		var focus_height = svg_height - focus_margin.top - focus_margin.bottom;
+		var context_height = svg_height - context_margin.top - context_margin.bottom;
+
+		var x_focus_scale = d3.time.scale().range([0, graph_width]);
+		var x_context_scale = d3.time.scale().range([0, graph_width]);
+		var y_focus_scale = d3.scale.linear().range([focus_height, 0]);
+		var y_context_scale = d3.scale.linear().range([context_height, 0]);
+
+		var x_focus_axis = d3.svg.axis().scale(x_focus_scale).orient('bottom');
+		var x_context_axis = d3.svg.axis().scale(x_context_scale).orient('bottom');
+		var y_axis = d3.svg.axis().scale(y_focus_scale).orient('left');
+
+		var brush = d3.svg.brush()
+			.x(x_context_scale)
+			.on('brush', brushed);
+
+		function brushed() {
+			x_focus_scale.domain(brush.empty() ? x_context_scale.domain() : brush.extent());
+			focus.select('.focus-line').attr('d', focus_line);
+			focus.select('.x.axis').call(x_focus_axis);
+			console.log(x_focus_scale.domain()) // TEST
+		}			
+
+		var focus_area = d3.svg.area() // Currently Unused
+			.interpolate('monotone')
+			.x(function(d) { return x_focus_scale(d.date); })
+			.y0(focus_height)
+			.y1(function(d) { return y_focus_scale(d.value); });
+
+		var focus_line = d3.svg.line()
+			.interpolate('linear')
+			.x(function(d) { return x_focus_scale(d.date); })
+			.y(function(d) { return y_focus_scale(d.value); });
+		
+		var context_area = d3.svg.area()
+			.interpolate('monotone')
+			.x(function(d) { return x_context_scale(d.date); })
+			.y0(context_height)
+			.y1(function(d) { return y_context_scale(d.value); });
+
+		var svg = d3.select('body').append('svg')
+			.attr('width', graph_width + focus_margin.left + focus_margin.right)
+			.attr('height', focus_height + focus_margin.top + focus_margin.bottom);
+
+		svg.append('defs').append('clipPath')
+			.attr('id', 'clip')
+			.append('rect')
+			.attr('width', graph_width)
+			.attr('height', focus_height);
+
+		var focus = svg.append('g')
+			.attr('class', 'focus')
+			.attr('transform', 'translate(' + focus_margin.left + ',' + focus_margin.top + ')');
+
+		var context = svg.append('g')
+			.attr('class', 'context')
+			.attr('transform', 'translate(' + context_margin.left + ',' + context_margin.top + ')');
+
+
+		var parseDate = d3.time.format('%Y-%m-%d').parse;
+
+		var graphData = null;
+		d3.json('dataDownload.json', function(error, data){
+			if (error) throw error;
+			graphData = data;
+			graphData.forEach(function(d) {
+				d.date = parseDate(d.dt);
+				d.value = +d.value;
+				// d.value_plus = +d.value_plus; //TEST
+			});
+			// graphData = graphData.map(function(d){d.date = parseDate(d.date); d.value = +d.value; return d;})
+			defineScales();
+			addData_FocusGraph();
+			addData_ContextGraph();
+		});
+
+		function defineScales(){
+			// console.log(d3.min(graphData.map(function(d) {return d.value;})))
+			x_focus_scale.domain(d3.extent(graphData.map(function(d) {return d.date;})));
+			y_focus_scale.domain([0,d3.max(graphData.map(function(d) {return d.value;}))]);
+			x_context_scale.domain(x_focus_scale.domain());
+			y_context_scale.domain(y_focus_scale.domain());
+		};
+
+		function addData_FocusGraph(){
+			focus.append('path')
+				.datum(graphData)
+				.attr('class', 'focus-line')
+				.attr('d', focus_line);
+
+			focus.append('g')
+				.attr('class', 'x axis')
+				.attr('transform', 'translate(0,' + focus_height + ')')
+				.call(x_focus_axis);
+
+			focus.append('g')
+				.attr('class', 'y axis')
+				.call(y_axis);
+		};
+
+		function addData_ContextGraph(){
+			context.append('path')
+				.datum(graphData)
+				.attr('class', 'area')
+				.attr('d', context_area);
+
+			context.append('g')
+				.attr('class', 'x axis')
+				.attr('transform', 'translate(0,' + context_height + ')')
+				.call(x_context_axis);
+
+			context.append('g')
+				.attr('class', 'x brush')
+				.call(brush)
+				.selectAll('rect')
+				.attr('y', -6)
+				.attr('height', context_height + 7);
+		};
+	</script>
+</body>
+</html>
