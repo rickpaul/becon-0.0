@@ -1,8 +1,11 @@
+# TODO: put in logging
 # TODO: put in semi-random-seed
 import numpy as np
 
 from cluster_BrownianCluster import BrownClusterModel
 from cluster_BrownianCluster_util import DrawHandler_BCM
+from cluster_BrownianCluster_util import writeDictionaryToJSON
+from EMF_util import webJSONRepository
 
 import test_util as testing
 
@@ -59,13 +62,14 @@ def testMergeCostReductionTableNaive(BCM):
 if __name__ == '__main__':
 	testing.resetTestSuite()
 
-	doVisualTests = 0
-	doMergeCostReductionTests = 1
-	doEdgeCostTests = 1
+	doVisualTests = 1
+	doMergeCostReductionTests = 0
+	doEdgeCostTests = 0
 
 	if doVisualTests:
-		drawer = PyPlotDrawHandler_BCM()
-		drawer.drawMergeSequenceUsingPyPlot()
+		drawer = DrawHandler_BCM()
+		drawDict = drawer.drawBCMUsingPyPlot(numberOfLoops=2)
+		writeDictionaryToJSON(drawDict, webJSONRepository + 'test_BCMClusterGraph.json', prettyPrint=True)
 
 	if doMergeCostReductionTests:
 		array1 = [0,1]
